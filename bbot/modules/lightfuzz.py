@@ -667,7 +667,7 @@ class lightfuzz(BaseModule):
                 if k == "set_cookie":
 
                     if "=" not in v:
-                        self.critical(f"DEBUG FOR COOKIE WITHOUT =: {v}")
+                        self.debug(f"Cookie found without '=': {v}")
                         continue
                     else:
 
