@@ -4,13 +4,12 @@ import tempfile
 import subprocess
 from pathlib import Path
 from bbot.modules.base import BaseModule
-from bbot.core.helpers.web import is_login_page
 
 
 class httpx(BaseModule):
     watched_events = ["OPEN_TCP_PORT", "URL_UNVERIFIED", "URL"]
     produced_events = ["URL", "HTTP_RESPONSE"]
-    flags = ["active", "safe", "web-basic", "web-thorough", "social-enum", "subdomain-enum", "cloud-enum"]
+    flags = ["active", "safe", "web-basic", "social-enum", "subdomain-enum", "cloud-enum"]
     meta = {"description": "Visit webpages. Many other modules rely on httpx"}
 
     options = {
@@ -19,6 +18,7 @@ class httpx(BaseModule):
         "version": "1.2.5",
         "max_response_size": 5242880,
         "store_responses": False,
+        "probe_all_ips": False,
     }
     options_desc = {
         "threads": "Number of httpx threads to use",
@@ -26,6 +26,7 @@ class httpx(BaseModule):
         "version": "httpx version",
         "max_response_size": "Max response size in bytes",
         "store_responses": "Save raw HTTP responses to scan folder",
+        "probe_all_ips": "Probe all the ips associated with same host",
     }
     deps_ansible = [
         {
@@ -49,6 +50,7 @@ class httpx(BaseModule):
         self.retries = self.scan.config.get("httpx_retries", 1)
         self.max_response_size = self.config.get("max_response_size", 5242880)
         self.store_responses = self.config.get("store_responses", False)
+        self.probe_all_ips = self.config.get("probe_all_ips", False)
         self.visited = set()
         self.httpx_tempdir_regex = re.compile(r"^httpx\d+$")
         return True
@@ -81,7 +83,7 @@ class httpx(BaseModule):
             if e.type.startswith("URL"):
                 # we NEED the port, otherwise httpx will try HTTPS even for HTTP URLs
                 url = e.with_port().geturl()
-                if e.parsed.path == "/":
+                if e.parsed_url.path == "/":
                     url_hash = hash((e.host, e.port))
             else:
                 url = str(e.data)
@@ -121,12 +123,15 @@ class httpx(BaseModule):
         if dns_resolvers:
             command += ["-r", dns_resolvers]
 
+        if self.probe_all_ips:
+            command += ["-probe-all-ips"]
+
         for hk, hv in self.scan.config.get("http_headers", {}).items():
             command += ["-header", f"{hk}: {hv}"]
         proxy = self.scan.config.get("http_proxy", "")
         if proxy:
             command += ["-http-proxy", proxy]
-        async for line in self.helpers.run_live(command, input=list(stdin), stderr=subprocess.DEVNULL):
+        async for line in self.run_process_live(command, input=list(stdin), stderr=subprocess.DEVNULL):
             try:
                 j = json.loads(line)
             except json.decoder.JSONDecodeError:
@@ -157,7 +162,7 @@ class httpx(BaseModule):
             if httpx_ip:
                 tags.append(f"ip-{httpx_ip}")
             # detect login pages
-            if is_login_page(j.get("body", "")):
+            if self.helpers.web.is_login_page(j.get("body", "")):
                 tags.append("login-page")
             # grab title
             title = self.helpers.tagify(j.get("title", ""), maxlen=30)
@@ -167,8 +172,6 @@ class httpx(BaseModule):
             if url_event:
                 if url_event != source_event:
                     await self.emit_event(url_event)
-                else:
-                    url_event._resolved.set()
                 # HTTP response
                 await self.emit_event(j, "HTTP_RESPONSE", url_event, tags=url_event.tags)
 

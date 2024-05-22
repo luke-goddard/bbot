@@ -280,7 +280,7 @@ class TestGithub_Org(ModuleTestBase):
         )
 
     def check(self, module_test, events):
-        assert len(events) == 6
+        assert len(events) == 7
         assert 1 == len(
             [
                 e
@@ -298,6 +298,7 @@ class TestGithub_Org(ModuleTestBase):
                 if e.type == "SOCIAL"
                 and e.data["platform"] == "github"
                 and e.data["profile_name"] == "blacklanternsecurity"
+                and str(e.module) == "github_org"
                 and "github-org" in e.tags
                 and e.scope_distance == 1
             ]
@@ -308,7 +309,19 @@ class TestGithub_Org(ModuleTestBase):
                 for e in events
                 if e.type == "SOCIAL"
                 and e.data["platform"] == "github"
+                and e.data["profile_name"] == "blacklanternsecurity"
+                and str(e.module) == "social"
+                and e.scope_distance == 1
+            ]
+        ), "Failed to find blacklanternsecurity github (social module)"
+        assert 1 == len(
+            [
+                e
+                for e in events
+                if e.type == "SOCIAL"
+                and e.data["platform"] == "github"
                 and e.data["profile_name"] == "TheTechromancer"
+                and str(e.module) == "github_org"
                 and "github-org-member" in e.tags
                 and e.scope_distance == 2
             ]
@@ -318,6 +331,7 @@ class TestGithub_Org(ModuleTestBase):
                 e
                 for e in events
                 if e.type == "CODE_REPOSITORY"
+                and "git" in e.tags
                 and e.data["url"] == "https://github.com/blacklanternsecurity/test_keys"
                 and e.scope_distance == 1
             ]
@@ -328,7 +342,7 @@ class TestGithub_Org_No_Members(TestGithub_Org):
     config_overrides = {"modules": {"github_org": {"include_members": False}}}
 
     def check(self, module_test, events):
-        assert len(events) == 5
+        assert len(events) == 6
         assert 1 == len(
             [
                 e
@@ -336,10 +350,22 @@ class TestGithub_Org_No_Members(TestGithub_Org):
                 if e.type == "SOCIAL"
                 and e.data["platform"] == "github"
                 and e.data["profile_name"] == "blacklanternsecurity"
+                and str(e.module) == "github_org"
                 and "github-org" in e.tags
                 and e.scope_distance == 1
             ]
         ), "Failed to find blacklanternsecurity github"
+        assert 1 == len(
+            [
+                e
+                for e in events
+                if e.type == "SOCIAL"
+                and e.data["platform"] == "github"
+                and e.data["profile_name"] == "blacklanternsecurity"
+                and str(e.module) == "social"
+                and e.scope_distance == 1
+            ]
+        ), "Failed to find blacklanternsecurity github (social module)"
         assert 0 == len(
             [
                 e
@@ -355,13 +381,80 @@ class TestGithub_Org_MemberRepos(TestGithub_Org):
     config_overrides = {"modules": {"github_org": {"include_member_repos": True}}}
 
     def check(self, module_test, events):
-        assert len(events) == 7
+        assert len(events) == 8
         assert 1 == len(
             [
                 e
                 for e in events
                 if e.type == "CODE_REPOSITORY"
+                and "git" in e.tags
                 and e.data["url"] == "https://github.com/TheTechromancer/websitedemo"
                 and e.scope_distance == 2
             ]
-        ), "Found to find TheTechromancer github repo"
+        ), "Failed to find TheTechromancer github repo"
+
+
+class TestGithub_Org_Custom_Target(TestGithub_Org):
+    targets = ["ORG:blacklanternsecurity"]
+    config_overrides = {"scope_report_distance": 10, "omit_event_types": [], "speculate": True}
+
+    def check(self, module_test, events):
+        assert len(events) == 8
+        assert 1 == len(
+            [e for e in events if e.type == "ORG_STUB" and e.data == "blacklanternsecurity" and e.scope_distance == 1]
+        )
+        assert 1 == len(
+            [
+                e
+                for e in events
+                if e.type == "SOCIAL"
+                and e.data["platform"] == "github"
+                and e.data["profile_name"] == "blacklanternsecurity"
+                and e.scope_distance == 1
+                and str(e.module) == "social"
+                and e.source.type == "URL_UNVERIFIED"
+            ]
+        )
+        assert 1 == len(
+            [
+                e
+                for e in events
+                if e.type == "SOCIAL"
+                and e.data["platform"] == "github"
+                and e.data["profile_name"] == "blacklanternsecurity"
+                and e.scope_distance == 1
+                and str(e.module) == "github_org"
+                and e.source.type == "ORG_STUB"
+            ]
+        )
+        assert 1 == len(
+            [e for e in events if e.type == "DNS_NAME" and e.data == "github.com" and e.scope_distance == 1]
+        )
+        assert 1 == len(
+            [
+                e
+                for e in events
+                if e.type == "URL_UNVERIFIED"
+                and e.data == "https://github.com/blacklanternsecurity"
+                and e.scope_distance == 1
+            ]
+        )
+        assert 1 == len(
+            [
+                e
+                for e in events
+                if e.type == "CODE_REPOSITORY"
+                and e.data["url"] == "https://github.com/blacklanternsecurity/test_keys"
+                and e.scope_distance == 1
+            ]
+        )
+        assert 1 == len(
+            [
+                e
+                for e in events
+                if e.type == "SOCIAL"
+                and e.data["platform"] == "github"
+                and e.data["profile_name"] == "TheTechromancer"
+                and e.scope_distance == 2
+            ]
+        )

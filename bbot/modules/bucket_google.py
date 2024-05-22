@@ -8,7 +8,7 @@ class bucket_google(bucket_template):
 
     watched_events = ["DNS_NAME", "STORAGE_BUCKET"]
     produced_events = ["STORAGE_BUCKET", "FINDING"]
-    flags = ["active", "safe", "cloud-enum", "web-basic", "web-thorough"]
+    flags = ["active", "safe", "cloud-enum", "web-basic"]
     meta = {"description": "Check for Google object storage related to target"}
     options = {"permutations": False}
     options_desc = {
@@ -19,10 +19,16 @@ class bucket_google(bucket_template):
     delimiters = ("", "-", ".", "_")
     base_domains = ["storage.googleapis.com"]
     bad_permissions = [
+        "storage.buckets.get",
+        "storage.buckets.list",
+        "storage.buckets.create",
+        "storage.buckets.delete",
         "storage.buckets.setIamPolicy",
-        "storage.objects.list",
         "storage.objects.get",
+        "storage.objects.list",
         "storage.objects.create",
+        "storage.objects.delete",
+        "storage.objects.setIamPolicy",
     ]
 
     def filter_bucket(self, event):

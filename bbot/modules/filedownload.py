@@ -14,7 +14,7 @@ class filedownload(BaseModule):
 
     watched_events = ["URL_UNVERIFIED", "HTTP_RESPONSE"]
     produced_events = []
-    flags = ["active", "safe", "web-basic", "web-thorough"]
+    flags = ["active", "safe", "web-basic"]
     meta = {"description": "Download common filetypes such as PDF, DOCX, PPTX, etc."}
     options = {
         "extensions": [
@@ -120,7 +120,8 @@ class filedownload(BaseModule):
             if extension_matches or filedownload_requested:
                 await self.download_file(event.data)
         elif event.type == "HTTP_RESPONSE":
-            content_type = event.data["header"].get("content_type", "")
+            headers = event.data.get("header", {})
+            content_type = headers.get("content_type", "")
             if content_type:
                 url = event.data["url"]
                 await self.download_file(url, content_type=content_type)

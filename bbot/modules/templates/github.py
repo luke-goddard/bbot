@@ -1,7 +1,7 @@
-from bbot.modules.templates.subdomain_enum import subdomain_enum
+from bbot.modules.base import BaseModule
 
 
-class github(subdomain_enum):
+class github(BaseModule):
     """
     A template module for use of the GitHub API
     Inherited by several other github modules.
@@ -14,7 +14,7 @@ class github(subdomain_enum):
         await super().setup()
         self.api_key = None
         self.headers = {}
-        for module_name in ("github", "github_codesearch", "github_org"):
+        for module_name in ("github", "github_codesearch", "github_org", "git_clone"):
             module_config = self.scan.config.get("modules", {}).get(module_name, {})
             api_key = module_config.get("api_key", "")
             if api_key:

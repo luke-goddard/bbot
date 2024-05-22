@@ -4,7 +4,7 @@ from bbot.modules.base import BaseModule
 class bucket_template(BaseModule):
     watched_events = ["DNS_NAME", "STORAGE_BUCKET"]
     produced_events = ["STORAGE_BUCKET", "FINDING"]
-    flags = ["active", "safe", "cloud-enum", "web-basic", "web-thorough"]
+    flags = ["active", "safe", "cloud-enum", "web-basic"]
     options = {"permutations": False}
     options_desc = {
         "permutations": "Whether to try permutations",
@@ -19,7 +19,7 @@ class bucket_template(BaseModule):
 
     async def setup(self):
         self.buckets_tried = set()
-        self.cloud_helper = self.helpers.cloud[self.cloud_helper_name]
+        self.cloud_helper = self.helpers.cloud.providers[self.cloud_helper_name]
         self.permutations = self.config.get("permutations", False)
         return True
 
@@ -45,12 +45,13 @@ class bucket_template(BaseModule):
 
     async def handle_dns_name(self, event):
         buckets = set()
-        base = event.data
+        base = self.helpers.unidecode(self.helpers.smart_decode_punycode(event.data))
         stem = self.helpers.domain_stem(base)
         for b in [base, stem]:
             split = b.split(".")
             for d in self.delimiters:
-                buckets.add(d.join(split))
+                bucket_name = d.join(split)
+                buckets.add(bucket_name)
         async for bucket_name, url, tags in self.brute_buckets(buckets, permutations=self.permutations):
             await self.emit_event({"name": bucket_name, "url": url}, "STORAGE_BUCKET", source=event, tags=tags)
 

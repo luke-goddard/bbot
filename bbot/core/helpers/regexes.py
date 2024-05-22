@@ -1,4 +1,4 @@
-import re
+import regex as re
 from collections import OrderedDict
 
 # for extracting words from strings
@@ -85,7 +85,6 @@ event_type_regexes = OrderedDict(
     )
 )
 
-event_id_regex = re.compile(r"[0-9a-f]{40}:[A-Z0-9_]+")
 scan_name_regex = re.compile(r"[a-z]{3,20}_[a-z]{3,20}")
 
 
@@ -108,7 +107,6 @@ select_tag_regex = re.compile(
     r"<select[^>]+?name=[\"\']?(\w+)[\"\']?[^>]*>(?:\s*<option[^>]*?value=[\"\'](\w*)[\"\']?[^>]*>)?"
 )
 
-
 valid_netloc = r"[^\s!@#$%^&()=/?\\'\";~`<>]+"
 
 _split_host_port_regex = r"(?:(?P<scheme>[a-z0-9]{1,20})://)?(?:[^?]*@)?(?P<netloc>" + valid_netloc + ")"
@@ -119,3 +117,7 @@ extract_open_port_regex = re.compile(_extract_open_port_regex)
 
 _extract_host_regex = r"(?:[a-z0-9]{1,20}://)?(?:[^?]*@)?(" + valid_netloc + ")"
 extract_host_regex = re.compile(_extract_host_regex, re.I)
+
+# for use in recursive_decode()
+encoded_regex = re.compile(r"%[0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}|\\[ntrbv]")
+backslash_regex = re.compile(r"(?P<slashes>\\+)(?P<char>[ntrvb])")

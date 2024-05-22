@@ -3,7 +3,7 @@ import xmltodict
 from deepdiff import DeepDiff
 from contextlib import suppress
 from xml.parsers.expat import ExpatError
-from bbot.core.errors import HttpCompareError
+from bbot.errors import HttpCompareError
 
 log = logging.getLogger("bbot.core.helpers.diff")
 
@@ -123,7 +123,6 @@ class HttpCompare:
             dynamic_headers = self.compare_headers(baseline_1.headers, baseline_2.headers)
 
             self.baseline_ignore_headers += [x.lower() for x in dynamic_headers]
-            self.baseline_body_distance = self.compare_body(baseline_1_json, baseline_2_json)
             self._baselined = True
 
     def gen_cache_buster(self):

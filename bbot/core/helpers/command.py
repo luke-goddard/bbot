@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import traceback
+from signal import SIGINT
 from subprocess import CompletedProcess, CalledProcessError
 
 from .misc import smart_decode, smart_encode
@@ -9,7 +10,7 @@ from .misc import smart_decode, smart_encode
 log = logging.getLogger("bbot.core.helpers.command")
 
 
-async def run(self, *command, check=False, text=True, **kwargs):
+async def run(self, *command, check=False, text=True, idle_timeout=None, **kwargs):
     """Runs a command asynchronously and gets its output as a string.
 
     This method is a simple helper for executing a command and capturing its output.
@@ -20,6 +21,7 @@ async def run(self, *command, check=False, text=True, **kwargs):
         check (bool, optional): If set to True, raises an error if the subprocess exits with a non-zero status.
                                 Defaults to False.
         text (bool, optional): If set to True, decodes the subprocess output to string. Defaults to True.
+        idle_timeout (int, optional): Sets a limit on the number of seconds the process can run before throwing a TimeoutError
         **kwargs (dict): Additional keyword arguments for the subprocess.
 
     Returns:
@@ -33,32 +35,47 @@ async def run(self, *command, check=False, text=True, **kwargs):
         >>> process.stdout
         "file1.txt\nfile2.txt"
     """
+    # proc_tracker optionally keeps track of which processes are running under which modules
+    # this allows for graceful SIGINTing of a module's processes in the case when it's killed
+    proc_tracker = kwargs.pop("_proc_tracker", set())
     proc, _input, command = await self._spawn_proc(*command, **kwargs)
     if proc is not None:
-        if _input is not None:
-            if isinstance(_input, (list, tuple)):
-                _input = b"\n".join(smart_encode(i) for i in _input) + b"\n"
-            else:
-                _input = smart_encode(_input)
-        stdout, stderr = await proc.communicate(_input)
+        proc_tracker.add(proc)
+        try:
+            if _input is not None:
+                if isinstance(_input, (list, tuple)):
+                    _input = b"\n".join(smart_encode(i) for i in _input) + b"\n"
+                else:
+                    _input = smart_encode(_input)
 
-        # surface stderr
-        if text:
-            if stderr is not None:
-                stderr = smart_decode(stderr)
-            if stdout is not None:
-                stdout = smart_decode(stdout)
-        if proc.returncode:
-            if check:
-                raise CalledProcessError(proc.returncode, command, output=stdout, stderr=stderr)
-            if stderr:
-                command_str = " ".join(command)
-                log.warning(f"Stderr for run({command_str}):\n\t{stderr}")
+            try:
+                if idle_timeout is not None:
+                    stdout, stderr = await asyncio.wait_for(proc.communicate(_input), timeout=idle_timeout)
+                else:
+                    stdout, stderr = await proc.communicate(_input)
+            except asyncio.exceptions.TimeoutError:
+                proc.send_signal(SIGINT)
+                raise
 
-        return CompletedProcess(command, proc.returncode, stdout, stderr)
+            # surface stderr
+            if text:
+                if stderr is not None:
+                    stderr = smart_decode(stderr)
+                if stdout is not None:
+                    stdout = smart_decode(stdout)
+            if proc.returncode:
+                if check:
+                    raise CalledProcessError(proc.returncode, command, output=stdout, stderr=stderr)
+                if stderr:
+                    command_str = " ".join(command)
+                    log.warning(f"Stderr for run({command_str}):\n\t{stderr}")
+
+            return CompletedProcess(command, proc.returncode, stdout, stderr)
+        finally:
+            proc_tracker.remove(proc)
 
 
-async def run_live(self, *command, check=False, text=True, **kwargs):
+async def run_live(self, *command, check=False, text=True, idle_timeout=None, **kwargs):
     """Runs a command asynchronously and iterates through its output line by line in realtime.
 
     This method is useful for executing a command and capturing its output on-the-fly, as it is generated.
@@ -69,6 +86,7 @@ async def run_live(self, *command, check=False, text=True, **kwargs):
         check (bool, optional): If set to True, raises an error if the subprocess exits with a non-zero status.
                                 Defaults to False.
         text (bool, optional): If set to True, decodes the subprocess output to string. Defaults to True.
+        idle_timeout (int, optional): Sets a limit on the number of seconds the process can remain idle (no lines sent to stdout) before throwing a TimeoutError
         **kwargs (dict): Additional keyword arguments for the subprocess.
 
     Yields:
@@ -82,49 +100,62 @@ async def run_live(self, *command, check=False, text=True, **kwargs):
         >>> async for line in run_live(["tail", "-f", "/var/log/auth.log"]):
         ...     log.info(line)
     """
+    # proc_tracker optionally keeps track of which processes are running under which modules
+    # this allows for graceful SIGINTing of a module's processes in the case when it's killed
+    proc_tracker = kwargs.pop("_proc_tracker", set())
     proc, _input, command = await self._spawn_proc(*command, **kwargs)
     if proc is not None:
-        input_task = None
-        if _input is not None:
-            input_task = asyncio.create_task(_write_stdin(proc, _input))
+        proc_tracker.add(proc)
+        try:
+            input_task = None
+            if _input is not None:
+                input_task = asyncio.create_task(_write_stdin(proc, _input))
 
-        while 1:
-            try:
-                line = await proc.stdout.readline()
-            except ValueError as e:
-                command_str = " ".join([str(c) for c in command])
-                log.warning(f"Error executing command {command_str}: {e}")
-                log.trace(traceback.format_exc())
-                continue
-            if not line:
-                break
-            if text:
-                line = smart_decode(line).rstrip("\r\n")
-            else:
-                line = line.rstrip(b"\r\n")
-            yield line
+            while 1:
+                try:
+                    if idle_timeout is not None:
+                        line = await asyncio.wait_for(proc.stdout.readline(), timeout=idle_timeout)
+                    else:
+                        line = await proc.stdout.readline()
+                except asyncio.exceptions.TimeoutError:
+                    proc.send_signal(SIGINT)
+                    raise
+                except ValueError as e:
+                    command_str = " ".join([str(c) for c in command])
+                    log.warning(f"Error executing command {command_str}: {e}")
+                    log.trace(traceback.format_exc())
+                    continue
+                if not line:
+                    break
+                if text:
+                    line = smart_decode(line).rstrip("\r\n")
+                else:
+                    line = line.rstrip(b"\r\n")
+                yield line
 
-        if input_task is not None:
-            try:
-                await input_task
-            except ConnectionError:
-                log.trace(f"ConnectionError in command: {command}, kwargs={kwargs}")
-                log.trace(traceback.format_exc())
-        await proc.wait()
+            if input_task is not None:
+                try:
+                    await input_task
+                except ConnectionError:
+                    log.trace(f"ConnectionError in command: {command}, kwargs={kwargs}")
+                    log.trace(traceback.format_exc())
+            await proc.wait()
 
-        if proc.returncode:
-            stdout, stderr = await proc.communicate()
-            if text:
-                if stderr is not None:
-                    stderr = smart_decode(stderr)
-                if stdout is not None:
-                    stdout = smart_decode(stdout)
-            if check:
-                raise CalledProcessError(proc.returncode, command, output=stdout, stderr=stderr)
-            # surface stderr
-            if stderr:
-                command_str = " ".join(command)
-                log.warning(f"Stderr for run_live({command_str}):\n\t{stderr}")
+            if proc.returncode:
+                stdout, stderr = await proc.communicate()
+                if text:
+                    if stderr is not None:
+                        stderr = smart_decode(stderr)
+                    if stdout is not None:
+                        stdout = smart_decode(stdout)
+                if check:
+                    raise CalledProcessError(proc.returncode, command, output=stdout, stderr=stderr)
+                # surface stderr
+                if stderr:
+                    command_str = " ".join(command)
+                    log.warning(f"Stderr for run_live({command_str}):\n\t{stderr}")
+        finally:
+            proc_tracker.remove(proc)
 
 
 async def _spawn_proc(self, *command, **kwargs):
@@ -171,7 +202,8 @@ async def _write_proc_line(proc, chunk):
         proc.stdin.write(smart_encode(chunk) + b"\n")
         await proc.stdin.drain()
     except Exception as e:
-        command = " ".join([str(s) for s in proc.args])
+        proc_args = [str(s) for s in getattr(proc, "args", [])]
+        command = " ".join(proc_args)
         log.warning(f"Error writing line to stdin for command: {command}: {e}")
         log.trace(traceback.format_exc())
 

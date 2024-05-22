@@ -1,10 +1,11 @@
 from bbot.modules.templates.github import github
+from bbot.modules.templates.subdomain_enum import subdomain_enum
 
 
-class github_codesearch(github):
+class github_codesearch(github, subdomain_enum):
     watched_events = ["DNS_NAME"]
     produced_events = ["CODE_REPOSITORY", "URL_UNVERIFIED"]
-    flags = ["passive", "subdomain-enum", "safe"]
+    flags = ["passive", "subdomain-enum", "safe", "code-enum"]
     meta = {"description": "Query Github's API for code containing the target domain name", "auth_required": True}
     options = {"api_key": "", "limit": 100}
     options_desc = {"api_key": "Github token", "limit": "Limit code search to this many results"}
@@ -18,7 +19,7 @@ class github_codesearch(github):
     async def handle_event(self, event):
         query = self.make_query(event)
         for repo_url, raw_urls in (await self.query(query)).items():
-            repo_event = self.make_event({"url": repo_url}, "CODE_REPOSITORY", source=event)
+            repo_event = self.make_event({"url": repo_url}, "CODE_REPOSITORY", tags="git", source=event)
             if repo_event is None:
                 continue
             await self.emit_event(repo_event)

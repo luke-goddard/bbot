@@ -1,7 +1,7 @@
-import re
 import html
 import base64
 import jwt as j
+import regex as re
 from urllib.parse import urljoin
 
 from bbot.core.helpers.regexes import _email_regex, dns_name_regex
@@ -14,6 +14,7 @@ class BaseExtractor:
 
     def __init__(self, excavate):
         self.excavate = excavate
+        self.helpers = excavate.helpers
         self.compiled_regexes = {}
         for rname, r in self.regexes.items():
             self.compiled_regexes[rname] = re.compile(r)
@@ -29,7 +30,7 @@ class BaseExtractor:
         for name, regex in self.compiled_regexes.items():
             # yield to event loop
             await self.excavate.helpers.sleep(0)
-            for result in regex.findall(content):
+            for result in await self.helpers.re.findall(regex, content):
                 yield result, name
 
     async def report(self, result, name, event):
@@ -39,14 +40,14 @@ class BaseExtractor:
 class CSPExtractor(BaseExtractor):
     regexes = {"CSP": r"(?i)(?m)Content-Security-Policy:.+$"}
 
-    def extract_domains(self, csp):
-        domains = dns_name_regex.findall(csp)
+    async def extract_domains(self, csp):
+        domains = await self.helpers.re.findall(dns_name_regex, csp)
         unique_domains = set(domains)
         return unique_domains
 
     async def search(self, content, event, **kwargs):
         async for csp, name in self._search(content, event, **kwargs):
-            extracted_domains = self.extract_domains(csp)
+            extracted_domains = await self.extract_domains(csp)
             for domain in extracted_domains:
                 await self.report(domain, event, **kwargs)
 
@@ -67,11 +68,12 @@ class HostnameExtractor(BaseExtractor):
 
 
 class URLExtractor(BaseExtractor):
-    url_path_regex = r"((?:\w|\d)(?:[\d\w-]+\.?)+(?::\d{1,5})?(?:/[-\w\.\(\)]+)*/?)"
+    url_path_regex = r"((?:\w|\d)(?:[\d\w-]+\.?)+(?::\d{1,5})?(?:/[-\w\.\(\)]*[-\w\.]+)*/?)"
     regexes = {
         "fulluri": r"(?i)" + r"([a-z]\w{1,15})://" + url_path_regex,
         "fullurl": r"(?i)" + r"(https?)://" + url_path_regex,
         "a-tag": r"<a\s+(?:[^>]*?\s+)?href=([\"'])(.*?)\1",
+        "link-tag": r"<link\s+(?:[^>]*?\s+)?href=([\"'])(.*?)\1",
         "script-tag": r"<script\s+(?:[^>]*?\s+)?src=([\"'])(.*?)\1",
     }
 
@@ -121,16 +123,16 @@ class URLExtractor(BaseExtractor):
                     urls_found += 1
 
     async def _search(self, content, event, **kwargs):
-        parsed = getattr(event, "parsed", None)
+        parsed = getattr(event, "parsed_url", None)
         for name, regex in self.compiled_regexes.items():
             # yield to event loop
             await self.excavate.helpers.sleep(0)
-            for result in regex.findall(content):
+            for result in await self.helpers.re.findall(regex, content):
                 if name.startswith("full"):
                     protocol, other = result
                     result = f"{protocol}://{other}"
 
-                elif name in ("a-tag", "script-tag") and parsed:
+                elif parsed and name.endswith("-tag"):
                     path = html.unescape(result[1])
 
                     for p in self.prefix_blacklist:
@@ -141,7 +143,7 @@ class URLExtractor(BaseExtractor):
                             continue
 
                     if not self.compiled_regexes["fullurl"].match(path):
-                        source_url = event.parsed.geturl()
+                        source_url = event.parsed_url.geturl()
                         result = urljoin(source_url, path)
                         # this is necessary to weed out mailto: and such
                         if not self.compiled_regexes["fullurl"].match(result):
@@ -166,7 +168,7 @@ class URLExtractor(BaseExtractor):
             # these findings are pretty mundane so don't bother with them if they aren't in scope
             abort_if = lambda e: e.scope_distance > 0
             event_data = {"host": str(host), "description": f"Non-HTTP URI: {result}"}
-            parsed_url = getattr(event, "parsed", None)
+            parsed_url = getattr(event, "parsed_url", None)
             if parsed_url:
                 event_data["url"] = parsed_url.geturl()
             await self.excavate.emit_event(
@@ -390,10 +392,13 @@ class excavate(BaseInternalModule):
             if self.scan.config.get("url_remove_querystring", True) == False:
                 body = event.data.get("body", "")
             else:
-                body = self.helpers.recursive_decode(event.data.get("body", ""))
+                body = self.helpers.re.recursive_decode(event.data.get("body", ""))
 
             # Cloud extractors
             self.helpers.cloud.excavate(event, body)
+
+
+
             await self.search(
                 body,
                 [
@@ -410,7 +415,7 @@ class excavate(BaseInternalModule):
                 consider_spider_danger=True,
             )
 
-            headers = self.helpers.recursive_decode(event.data.get("raw_header", ""))
+            headers = await self.helpers.re.recursive_decode(event.data.get("raw_header", ""))
             await self.search(
                 headers,
                 [self.hostname, self.url, self.email, self.error_extractor, self.jwt, self.serialization, self.csp],
