@@ -4,7 +4,7 @@ import re
 import urllib.parse
 
 from bbot.core.helpers.misc import extract_params_html
-from bbot.core.errors import InteractshError, HttpCompareError
+from bbot.errors import InteractshError, HttpCompareError
 
 
 class BaseLightfuzz:

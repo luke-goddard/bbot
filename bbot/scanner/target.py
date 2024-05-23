@@ -381,10 +381,10 @@ class Target:
     def _add_event(self, event):
         radix_data = self._radix.search(event.host)
         if radix_data is None:
-            radix_data = {event}
+            radix_data = [event]
             self._radix.insert(event.host, radix_data)
         else:
-            radix_data.add(event)
+            radix_data.append(event)
         self._events.add(event)
 
     def _contains(self, other):

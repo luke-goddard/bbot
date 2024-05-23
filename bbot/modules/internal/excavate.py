@@ -397,8 +397,6 @@ class excavate(BaseInternalModule):
             # Cloud extractors
             self.helpers.cloud.excavate(event, body)
 
-
-
             await self.search(
                 body,
                 [

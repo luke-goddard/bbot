@@ -931,10 +931,8 @@ class URL_UNVERIFIED(BaseEvent):
                     self.url_extension = extension
                     self.add_tag(f"extension-{extension}")
 
-
         scan = getattr(self, "scan", None)
         self.parsed = validators.validate_url_parsed(data)
-
 
         # tag as dir or endpoint
         if str(self.parsed_url.path).endswith("/"):
@@ -942,11 +940,9 @@ class URL_UNVERIFIED(BaseEvent):
         else:
             self.add_tag("endpoint")
 
-
         data = self.parsed_url.geturl()
 
-
-        parsed_path_lower = str(self.parsed.path).lower()
+        parsed_path_lower = str(self.parsed_url.path).lower()
 
         url_extension_blacklist = getattr(scan, "url_extension_blacklist", [])
         url_extension_httpx_only = getattr(scan, "url_extension_httpx_only", [])
@@ -960,7 +956,7 @@ class URL_UNVERIFIED(BaseEvent):
                 self.add_tag("httpx-only")
                 self._omit = True
 
-        data = self.parsed.geturl()
+        data = self.parsed_url.geturl()
         return data
 
     def with_port(self):
@@ -981,11 +977,12 @@ class URL_UNVERIFIED(BaseEvent):
         data = super()._data_id()
         if "spider-danger" in self.tags:
             data = "spider-danger" + data
-
-        if self.scan.config.get("url_remove_querystring", True) == False and self.parsed.query:
-            # remove the values from the query string
-            cleaned_query = "|".join(sorted([p.split("=")[0] for p in self.parsed.query.split("&")]))
-            data = f"{self.parsed.scheme}:{self.parsed.netloc}:{self.parsed.path}:{cleaned_query}"
+        # this is a hack which needs to be replaced with a real fix in bbot-2.0 branch
+        if self.scan is not None:
+            if self.scan.config.get("url_remove_querystring", True) == False and self.parsed_url.query:
+                # remove the values from the query string
+                cleaned_query = "|".join(sorted([p.split("=")[0] for p in self.parsed_url.query.split("&")]))
+                data = f"{self.parsed_url.scheme}:{self.parsed_url.netloc}:{self.parsed_url.path}:{cleaned_query}"
         return data
 
     @property
@@ -1044,13 +1041,15 @@ class WEB_PARAMETER(DictHostEvent):
         url = self.data.get("url", "")
         name = self.data.get("name", "")
         param_type = self.data.get("type", "")
-        if self.scan.config.get("url_remove_querystring", True) == False:
-            from urllib.parse import urlparse
+        # this is a hack which needs to be replaced with a real fix in bbot-2.0 branch
+        if self.scan is not None:
+            if self.scan.config.get("url_remove_querystring", True) == False:
+                from urllib.parse import urlparse
 
-            parsed_url = urlparse(url)
-            # remove the values from the query string
-            cleaned_query = "|".join(sorted([p.split("=")[0] for p in parsed_url.query.split("&")]))
-            url = f"{parsed_url.scheme}:{parsed_url.netloc}:{parsed_url.path}:{cleaned_query}"
+                parsed_url = urlparse(url)
+                # remove the values from the query string
+                cleaned_query = "|".join(sorted([p.split("=")[0] for p in parsed_url.query.split("&")]))
+                url = f"{parsed_url.scheme}:{parsed_url.netloc}:{parsed_url.path}:{cleaned_query}"
         return f"{url}:{name}:{param_type}"
 
     def _url(self):

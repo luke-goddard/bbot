@@ -1077,7 +1077,6 @@ def extract_params_html(html_data, compare_mode="getparam"):
         yield "GET", href, parameter, original_value, "a_tag", None
 
 
-
 def extract_words(data, acronyms=True, wordninja=True, model=None, max_length=100, word_regexes=None):
     """Intelligently extracts words from given data.
 
