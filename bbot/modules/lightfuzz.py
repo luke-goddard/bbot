@@ -707,7 +707,7 @@ class lightfuzz(BaseModule):
                 if endpoint.startswith("http://") or endpoint.startswith("https://"):
                     url = endpoint
                 else:
-                    url = f"{str(event.data['scheme'])}://{str(event.host)}{endpoint}"
+                    url = f"{event.parsed_url.scheme}://{event.parsed_url.netloc}{endpoint}"
 
                 self.debug(
                     f"extract_params_html returned: endpoint [{endpoint}], parameter_name [{parameter_name}], regex_name [{regex_name}]"
@@ -727,6 +727,7 @@ class lightfuzz(BaseModule):
                         continue
 
                 if in_bl == False:
+
                     description = f"HTTP Extracted Parameter [{parameter_name}]"
                     data = {
                         "host": str(event.host),
