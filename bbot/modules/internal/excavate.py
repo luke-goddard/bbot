@@ -394,9 +394,6 @@ class excavate(BaseInternalModule):
             else:
                 body = self.helpers.re.recursive_decode(event.data.get("body", ""))
 
-            # Cloud extractors
-            self.helpers.cloud.excavate(event, body)
-
             await self.search(
                 body,
                 [

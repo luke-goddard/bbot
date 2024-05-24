@@ -105,7 +105,6 @@ class paramminer_headers(BaseModule):
     async def do_mining(self, wl, url, batch_size, compare_helper):
         for i in wl:
             if i not in self.wl:
-                # this might have been a bug so check it before merging to dev.
                 h = hash(i + url)
                 self.already_checked.add(h)
 
@@ -220,7 +219,8 @@ class paramminer_headers(BaseModule):
         elif content_type and "xml" in content_type.lower():
             return extract_params_xml(body, self.compare_mode)
         else:
-            return set(await self.helpers.re.extract_params_html(body, self.compare_mode))
+            extract_params_html_result = await self.helpers.re.extract_params_html(body, self.compare_mode)
+            return set([t[2] for t in extract_params_html_result])
 
     async def binary_search(self, compare_helper, url, group, reasons=None, reflection=False):
         if reasons is None:

@@ -937,7 +937,6 @@ def extract_params_html(html_data, compare_mode="getparam"):
             Defaults to 'getparam'. Valid modes are 'header', 'getparam', 'cookie'.
 
     Yields:
-    endpoint, parameter_name, original_value, regex_name, additional_params
         method(str), endpoint(str), parameter_name(str), original_value(str), regex_name(str), additional_params(dict): The HTTP method associated with the parameter (GET, POST, None), A string containing (optionally) the endpoint associated with the parameter, the parameter found in HTML object, its original value (if available), the name of the detecting regex, a dict of additional params if any
 
     Examples:

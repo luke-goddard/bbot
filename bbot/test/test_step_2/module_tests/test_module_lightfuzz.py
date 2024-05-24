@@ -184,6 +184,7 @@ console.log(lang);
         assert original_value_captured, "original_value not captured"
         assert xss_finding_emitted, "In Javascript XSS FINDING not omitted"
 
+
 # TODO
 # class Test_Lightfuzz_xss_paramminer(ModuleTestBase):
 #   targets = ["http://127.0.0.1:8888"]
