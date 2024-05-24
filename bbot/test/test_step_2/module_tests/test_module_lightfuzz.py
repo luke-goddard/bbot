@@ -6,8 +6,6 @@ from urllib.parse import unquote
 
 
 # Between Tags XSS Detection
-
-
 class Test_Lightfuzz_xss(ModuleTestBase):
     targets = ["http://127.0.0.1:8888"]
     modules_overrides = ["httpx", "lightfuzz"]
@@ -65,8 +63,6 @@ class Test_Lightfuzz_xss(ModuleTestBase):
 
 
 # In Tag Attribute XSS Detection
-
-
 class Test_Lightfuzz_xss_intag(Test_Lightfuzz_xss):
     def request_handler(self, request):
         qs = str(request.query_string.decode())
@@ -122,8 +118,6 @@ class Test_Lightfuzz_xss_intag(Test_Lightfuzz_xss):
 
 
 # In Javascript XSS Detection
-
-
 class Test_Lightfuzz_xss_injs(Test_Lightfuzz_xss):
     def request_handler(self, request):
         qs = str(request.query_string.decode())
