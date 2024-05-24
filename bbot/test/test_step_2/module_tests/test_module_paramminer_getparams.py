@@ -37,12 +37,12 @@ class TestParamminer_Getparams(Paramminer_Headers):
 
     def check(self, module_test, events):
         assert any(
-            e.type == "FINDING"
+            e.type == "WEB_PARAMETER"
             and "[Paramminer] Getparam: [id] Reasons: [body] Reflection: [True]" in e.data["description"]
             for e in events
         )
         assert not any(
-            e.type == "FINDING" and "[Paramminer] Getparam: [canary] Reasons: [body]" in e.data["description"]
+            e.type == "WEB_PARAMETER" and "[Paramminer] Getparam: [canary] Reasons: [body]" in e.data["description"]
             for e in events
         )
 
@@ -231,12 +231,6 @@ class TestParamminer_Getparams_Extract_Html(Paramminer_Headers):
         module_test.set_expect_requests(respond_args=respond_args)
 
     def check(self, module_test, events):
-
-        for e in events:
-            print("@@@@@")
-            print(e.type)
-            print(e)
-
         assert any(
             e.type == "WEB_PARAMETER" and "[Paramminer] Getparam: [hack] Reasons: [body]" in e.data["description"]
             for e in events
@@ -283,6 +277,6 @@ class TestParamminer_Getparams_finish(Paramminer_Headers):
 
     def check(self, module_test, events):
         assert any(
-            e.type == "FINDING" and "[abcd1234] Reasons: [body] Reflection: [False]" in e.data["description"]
+            e.type == "WEB_PARAMETER" and "[abcd1234] Reasons: [body] Reflection: [False]" in e.data["description"]
             for e in events
         )

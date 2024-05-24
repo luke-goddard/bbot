@@ -40,12 +40,12 @@ class Paramminer_Headers(ModuleTestBase):
 
     def check(self, module_test, events):
         assert any(
-            e.type == "FINDING"
+            e.type == "WEB_PARAMETER"
             and "[Paramminer] Header: [tracestate] Reasons: [body] Reflection: [True]" in e.data["description"]
             for e in events
         )
         assert not any(
-            e.type == "FINDING" and "[Paramminer] Header: [junkword1]" in e.data["description"] for e in events
+            e.type == "WEB_PARAMETER" and "[Paramminer] Header: [junkword1]" in e.data["description"] for e in events
         )
 
 
@@ -65,7 +65,7 @@ class TestParamminer_Headers_noreflection(Paramminer_Headers):
 
     def check(self, module_test, events):
         assert any(
-            e.type == "FINDING"
+            e.type == "WEB_PARAMETER"
             and "[Paramminer] Header: [tracestate] Reasons: [body] Reflection: [False]" in e.data["description"]
             for e in events
         )
@@ -107,7 +107,7 @@ class TestParamminer_Headers_extract(Paramminer_Headers):
     def check(self, module_test, events):
 
         assert any(
-            e.type == "FINDING"
+            e.type == "WEB_PARAMETER"
             and "[Paramminer] Header: [foo] Reasons: [body] Reflection: [True]" in e.data["description"]
             for e in events
         )

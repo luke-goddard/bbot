@@ -128,6 +128,7 @@ class URLExtractor(BaseExtractor):
             # yield to event loop
             await self.excavate.helpers.sleep(0)
             for result in await self.helpers.re.findall(regex, content):
+
                 if name.startswith("full"):
                     protocol, other = result
                     result = f"{protocol}://{other}"
@@ -392,7 +393,7 @@ class excavate(BaseInternalModule):
             if self.scan.config.get("url_remove_querystring", True) == False:
                 body = event.data.get("body", "")
             else:
-                body = self.helpers.re.recursive_decode(event.data.get("body", ""))
+                body = await self.helpers.re.recursive_decode(event.data.get("body", ""))
 
             await self.search(
                 body,
