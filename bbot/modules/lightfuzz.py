@@ -599,12 +599,15 @@ class lightfuzz(BaseModule):
             self.hugeinfo("Lightfuzz Command Injection Submodule Enabled")
 
             if self.scan.config.get("interactsh_disable", False) == False:
-
                 try:
                     self.interactsh_instance = self.helpers.interactsh()
                     self.interactsh_domain = await self.interactsh_instance.register(callback=self.interactsh_callback)
                 except InteractshError as e:
                     self.warning(f"Interactsh failure: {e}")
+
+        if self.submodule_sqli == False and self.submodule_cmdi == False and self.submodule_xss == False:
+            self.warning("All lightfuzz submodules disabled, disabling module")
+            return None
 
         return True
 
