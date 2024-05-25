@@ -575,7 +575,7 @@ class Test_Lightfuzz_cmdi(ModuleTestBase):
     def check(self, module_test, events):
 
         web_parameter_emitted = False
-        sqli_finding_emitted = False
+        cmdi_echocanary_finding_emitted = False
         for e in events:
             if e.type == "WEB_PARAMETER":
                 if "HTTP Extracted Parameter [search]" in e.data["description"]:
