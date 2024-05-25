@@ -60,8 +60,8 @@ class Test_Lightfuzz_xss(ModuleTestBase):
                 if "Possible Reflected XSS. Parameter: [search] Context: [Between Tags]" in e.data["description"]:
                     xss_finding_emitted = True
 
-        assert web_parameter_emitted, "WEB_PARAMETER was not omitted"
-        assert xss_finding_emitted, "Between Tags XSS FINDING not omitted"
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
+        assert xss_finding_emitted, "Between Tags XSS FINDING not emitted"
 
 
 # In Tag Attribute XSS Detection
@@ -113,9 +113,9 @@ class Test_Lightfuzz_xss_intag(Test_Lightfuzz_xss):
                 if "Possible Reflected XSS. Parameter: [foo] Context: [Tab Attribute]" in e.data["description"]:
                     xss_finding_emitted = True
 
-        assert web_parameter_emitted, "WEB_PARAMETER was not omitted"
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
         assert original_value_captured, "original_value not captured"
-        assert xss_finding_emitted, "Between Tags XSS FINDING not omitted"
+        assert xss_finding_emitted, "Between Tags XSS FINDING not emitted"
 
 
 # In Javascript XSS Detection
@@ -174,12 +174,12 @@ console.log(lang);
                 if "Possible Reflected XSS. Parameter: [language] Context: [In Javascript]" in e.data["description"]:
                     xss_finding_emitted = True
 
-        assert web_parameter_emitted, "WEB_PARAMETER was not omitted"
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
         assert original_value_captured, "original_value not captured"
-        assert xss_finding_emitted, "In Javascript XSS FINDING not omitted"
+        assert xss_finding_emitted, "In Javascript XSS FINDING not emitted"
 
 
-# SQLI Single Quote/Two Single Quote
+# SQLI Single Quote/Two Single Quote (getparam)
 class Test_Lightfuzz_sqli(ModuleTestBase):
     targets = ["http://127.0.0.1:8888"]
     modules_overrides = ["httpx", "lightfuzz"]
@@ -247,8 +247,227 @@ class Test_Lightfuzz_sqli(ModuleTestBase):
                 ):
                     sqli_finding_emitted = True
 
-        assert web_parameter_emitted, "WEB_PARAMETER was not omitted"
-        assert sqli_finding_emitted, "Between Tags XSS FINDING not omitted"
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
+        assert sqli_finding_emitted, "SQLi Single/Double Quote getparam FINDING not emitted"
+
+
+# SQLI Single Quote/Two Single Quote (postparam)
+class Test_Lightfuzz_sqli_post(ModuleTestBase):
+    targets = ["http://127.0.0.1:8888"]
+    modules_overrides = ["httpx", "lightfuzz"]
+    config_overrides = {
+        "interactsh_disable": True,
+        "modules": {"lightfuzz": {"submodule_xss": False, "submodule_sqli": True, "submodule_cmdi": False}},
+    }
+
+    def request_handler(self, request):
+
+        qs = str(request.query_string.decode())
+
+        parameter_block = """
+        <section class=search>
+            <form action=/ method=POST>
+                <input type=text placeholder='Search the blog...' name=search>
+                <button type=submit class=button>Search</button>
+            </form>
+        </section>
+        """
+
+        if "search" in request.form.keys():
+
+            value = request.form["search"]
+
+            sql_block_normal = f"""
+        <section class=blog-header>
+            <h1>0 search results for '{unquote(value)}'</h1>
+            <hr>
+        </section>
+        """
+
+            sql_block_error = f"""
+        <section class=error>
+            <h1>Found error in SQL query</h1>
+            <hr>
+        </section>
+        """
+            if value.endswith("'"):
+                if value.endswith("''"):
+                    return Response(sql_block_normal, status=200)
+                return Response(sql_block_error, status=500)
+        return Response(parameter_block, status=200)
+
+    async def setup_after_prep(self, module_test):
+
+        module_test.scan.modules["lightfuzz"].helpers.rand_string = lambda *args, **kwargs: "AAAAAAAAAAAAAA"
+        expect_args = re.compile("/")
+        module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
+
+    def check(self, module_test, events):
+
+        web_parameter_emitted = False
+        sqli_finding_emitted = False
+        for e in events:
+            if e.type == "WEB_PARAMETER":
+                if "HTTP Extracted Parameter [search]" in e.data["description"]:
+                    web_parameter_emitted = True
+
+            if e.type == "FINDING":
+                if (
+                    "Possible SQL Injection. Parameter: [search] Parameter Type: [POSTPARAM] Detection Method: [Single Quote/Two Single Quote]"
+                    in e.data["description"]
+                ):
+                    sqli_finding_emitted = True
+
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
+        assert sqli_finding_emitted, "SQLi Single/Double Quote postparam FINDING not emitted"
+
+
+# SQLI Single Quote/Two Single Quote (headers)
+class Test_Lightfuzz_sqli_headers(Test_Lightfuzz_sqli):
+
+    async def setup_after_prep(self, module_test):
+
+        module_test.scan.modules["lightfuzz"].helpers.rand_string = lambda *args, **kwargs: "AAAAAAAAAAAAAA"
+        expect_args = re.compile("/")
+        module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
+
+        seed_events = []
+        parent_event = module_test.scan.make_event(
+            "http://127.0.0.1:8888/",
+            "URL",
+            module_test.scan.root_event,
+            module="httpx",
+            tags=["status-200", "distance-0"],
+        )
+
+        data = {
+            "host": "127.0.0.1",
+            "type": "HEADER",
+            "name": "test",
+            "original_value": None,
+            "url": "http://127.0.0.1:8888",
+            "description": "Test Dummy Header",
+        }
+        seed_event = module_test.scan.make_event(data, "WEB_PARAMETER", parent_event, tags=["distance-0"])
+        seed_events.append(seed_event)
+        module_test.scan.target.seeds._events = set(seed_events)
+
+    def request_handler(self, request):
+
+        placeholder_block = """
+        <html>
+        <p>placeholder</p>
+        </html>
+        """
+
+        qs = str(request.query_string.decode())
+        if request.headers.get("Test") is not None:
+            header_value = request.headers.get("Test")
+
+            header_block_normal = f"""
+            <html>
+            <p>placeholder</p>
+            <p>test: {header_value}</p>
+            </html>
+            """
+
+            header_block_error = f"""
+            <html>
+            <p>placeholder</p>
+            <p>Error!</p>
+            </html>
+            """
+            if header_value.endswith("'") and not header_value.endswith("''"):
+                return Response(header_block_error, status=500)
+            return Response(header_block_normal, status=200)
+        return Response(placeholder_block, status=200)
+
+    def check(self, module_test, events):
+
+        web_parameter_emitted = False
+        sqli_finding_emitted = False
+        for e in events:
+            if e.type == "FINDING":
+                if (
+                    "Possible SQL Injection. Parameter: [test] Parameter Type: [HEADER] Detection Method: [Single Quote/Two Single Quote]"
+                    in e.data["description"]
+                ):
+                    sqli_finding_emitted = True
+        assert sqli_finding_emitted, "SQLi Single/Double Quote headers FINDING not emitted"
+
+
+# SQLI Single Quote/Two Single Quote (cookies)
+class Test_Lightfuzz_sqli_cookies(Test_Lightfuzz_sqli):
+
+    async def setup_after_prep(self, module_test):
+
+        module_test.scan.modules["lightfuzz"].helpers.rand_string = lambda *args, **kwargs: "AAAAAAAAAAAAAA"
+        expect_args = re.compile("/")
+        module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
+
+        seed_events = []
+        parent_event = module_test.scan.make_event(
+            "http://127.0.0.1:8888/",
+            "URL",
+            module_test.scan.root_event,
+            module="httpx",
+            tags=["status-200", "distance-0"],
+        )
+
+        data = {
+            "host": "127.0.0.1",
+            "type": "COOKIE",
+            "name": "test",
+            "original_value": None,
+            "url": "http://127.0.0.1:8888",
+            "description": "Test Dummy Header",
+        }
+        seed_event = module_test.scan.make_event(data, "WEB_PARAMETER", parent_event, tags=["distance-0"])
+        seed_events.append(seed_event)
+        module_test.scan.target.seeds._events = set(seed_events)
+
+    def request_handler(self, request):
+
+        placeholder_block = """
+        <html>
+        <p>placeholder</p>
+        </html>
+        """
+
+        qs = str(request.query_string.decode())
+        if request.cookies.get("test") is not None:
+            header_value = request.cookies.get("test")
+
+            header_block_normal = f"""
+            <html>
+            <p>placeholder</p>
+            <p>test: {header_value}</p>
+            </html>
+            """
+
+            header_block_error = f"""
+            <html>
+            <p>placeholder</p>
+            <p>Error!</p>
+            </html>
+            """
+            if header_value.endswith("'") and not header_value.endswith("''"):
+                return Response(header_block_error, status=500)
+            return Response(header_block_normal, status=200)
+        return Response(placeholder_block, status=200)
+
+    def check(self, module_test, events):
+
+        web_parameter_emitted = False
+        sqli_finding_emitted = False
+        for e in events:
+            if e.type == "FINDING":
+                if (
+                    "Possible SQL Injection. Parameter: [test] Parameter Type: [COOKIE] Detection Method: [Single Quote/Two Single Quote]"
+                    in e.data["description"]
+                ):
+                    sqli_finding_emitted = True
+        assert sqli_finding_emitted, "SQLi Single/Double Quote cookies FINDING not emitted"
 
 
 # SQLi Delay Probe
@@ -302,8 +521,8 @@ class Test_Lightfuzz_sqli_delay(Test_Lightfuzz_sqli):
                 ):
                     sqldelay_finding_emitted = True
 
-        assert web_parameter_emitted, "WEB_PARAMETER was not omitted"
-        assert sqldelay_finding_emitted, "SQLi Delay FINDING not omitted"
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
+        assert sqldelay_finding_emitted, "SQLi Delay FINDING not emitted"
 
 
 # CMDi echo canary
@@ -369,8 +588,8 @@ class Test_Lightfuzz_cmdi(ModuleTestBase):
                 ):
                     cmdi_echocanary_finding_emitted = True
 
-        assert web_parameter_emitted, "WEB_PARAMETER was not omitted"
-        assert cmdi_echocanary_finding_emitted, "echo canary CMDi FINDING not omitted"
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
+        assert cmdi_echocanary_finding_emitted, "echo canary CMDi FINDING not emitted"
 
 
 # CMDi interactsh
@@ -442,5 +661,5 @@ class Test_Lightfuzz_cmdi_interactsh(Test_Lightfuzz_cmdi):
                 ):
                     cmdi_interacttsh_finding_emitted = True
 
-        assert web_parameter_emitted, "WEB_PARAMETER was not omitted"
-        assert cmdi_interacttsh_finding_emitted, "interactsh CMDi FINDING not omitted"
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
+        assert cmdi_interacttsh_finding_emitted, "interactsh CMDi FINDING not emitted"
