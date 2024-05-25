@@ -156,7 +156,6 @@ class dnscommonsrv(subdomain_enum):
     meta = {"description": "Check for common SRV records"}
 
     async def handle_event(self, event):
-        self.hugesuccess(event)
         query = self.make_query(event)
         self.verbose(f'Brute-forcing SRV records for "{query}"')
         for hostname in await self.helpers.dns.brute(self, query, common_srvs, type="SRV"):
