@@ -110,7 +110,7 @@ class Test_Lightfuzz_xss_intag(Test_Lightfuzz_xss):
                         original_value_captured = True
 
             if e.type == "FINDING":
-                if "Possible Reflected XSS. Parameter: [foo] Context: [Tab Attribute]" in e.data["description"]:
+                if "Possible Reflected XSS. Parameter: [foo] Context: [Tag Attribute]" in e.data["description"]:
                     xss_finding_emitted = True
 
         assert web_parameter_emitted, "WEB_PARAMETER was not emitted"

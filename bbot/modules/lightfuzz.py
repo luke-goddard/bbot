@@ -530,7 +530,7 @@ class XSSLightfuzz(BaseLightfuzz):
                     self.results.append(
                         {
                             "type": "FINDING",
-                            "description": f"Possible Reflected XSS. Parameter: [{self.event.data['name']}] Context: [Tab Attribute]",
+                            "description": f"Possible Reflected XSS. Parameter: [{self.event.data['name']}] Context: [Tag Attribute]",
                         }
                     )
 
