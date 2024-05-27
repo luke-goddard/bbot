@@ -133,7 +133,7 @@ class PathTraversalFuzz(BaseLightfuzz):
                 http_compare, self.event.data["type"], payloads["doubledot_payload"], cookies
             )
 
-            if singledot_probe[0] == True and doubledot_probe[0] == False:
+            if singledot_probe[0] == True and doubledot_probe[0] == False and doubledot_probe[3].status_code != 403:
                 self.results.append(
                     {
                         "type": "FINDING",
