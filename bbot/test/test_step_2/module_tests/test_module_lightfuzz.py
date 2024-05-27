@@ -5,13 +5,87 @@ from werkzeug.wrappers import Response
 from urllib.parse import unquote
 
 
+# Path Traversal single dot tolerance
+class Test_Lightfuzz_path_singledot(ModuleTestBase):
+    targets = ["http://127.0.0.1:8888"]
+    modules_overrides = ["httpx", "lightfuzz"]
+    config_overrides = {
+        "interactsh_disable": True,
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": False,
+                "submodule_cmdi": False,
+                "submodule_path": True,
+            }
+        },
+    }
+
+    async def setup_after_prep(self, module_test):
+        expect_args = re.compile("/images")
+        module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
+        respond_args = {
+            "response_data": '"<section class="images"><img src="/images?filename=default.jpg"></section>',
+            "status": 200,
+        }
+
+        expect_args = {"method": "GET", "uri": "/"}
+        module_test.set_expect_requests(expect_args=expect_args, respond_args=respond_args)
+
+    def request_handler(self, request):
+
+        qs = str(request.query_string.decode())
+
+        if "filename=" in qs:
+            value = qs.split("=")[1]
+
+            if "&" in value:
+                value = value.split("&")[0]
+
+            block = f"""
+<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">
+  <rect width="1" height="1" fill="black"/>
+</svg>
+        """
+            if value == "%2F.%2Fdefault.jpg" or value == "default.jpg":
+                return Response(block, status=200)
+        return Response("file not found", status=500)
+
+    def check(self, module_test, events):
+
+        web_parameter_emitted = False
+        pathtraversal_finding_emitted = False
+        for e in events:
+            if e.type == "WEB_PARAMETER":
+                if "HTTP Extracted Parameter [filename]" in e.data["description"]:
+                    web_parameter_emitted = True
+
+            if e.type == "FINDING":
+
+                if (
+                    "POSSIBLE Path Traversal. Parameter: [filename] Parameter Type: [GETPARAM] Detection Method: [single-dot traversal tolerance (url-encoding)]"
+                    in e.data["description"]
+                ):
+                    pathtraversal_finding_emitted = True
+
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
+        assert pathtraversal_finding_emitted, "Path Traversal single dot tolerance FINDING not emitted"
+
+
 # Between Tags XSS Detection
 class Test_Lightfuzz_xss(ModuleTestBase):
     targets = ["http://127.0.0.1:8888"]
     modules_overrides = ["httpx", "lightfuzz"]
     config_overrides = {
         "interactsh_disable": True,
-        "modules": {"lightfuzz": {"submodule_xss": True, "submodule_sqli": False, "submodule_cmdi": False}},
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": True,
+                "submodule_sqli": False,
+                "submodule_cmdi": False,
+                "submodule_path": False,
+            }
+        },
     }
 
     def request_handler(self, request):
@@ -185,7 +259,14 @@ class Test_Lightfuzz_sqli(ModuleTestBase):
     modules_overrides = ["httpx", "lightfuzz"]
     config_overrides = {
         "interactsh_disable": True,
-        "modules": {"lightfuzz": {"submodule_xss": False, "submodule_sqli": True, "submodule_cmdi": False}},
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": True,
+                "submodule_cmdi": False,
+                "submodule_path": False,
+            }
+        },
     }
 
     def request_handler(self, request):
@@ -257,7 +338,14 @@ class Test_Lightfuzz_sqli_post(ModuleTestBase):
     modules_overrides = ["httpx", "lightfuzz"]
     config_overrides = {
         "interactsh_disable": True,
-        "modules": {"lightfuzz": {"submodule_xss": False, "submodule_sqli": True, "submodule_cmdi": False}},
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": True,
+                "submodule_cmdi": False,
+                "submodule_path": False,
+            }
+        },
     }
 
     def request_handler(self, request):
@@ -531,7 +619,14 @@ class Test_Lightfuzz_cmdi(ModuleTestBase):
     modules_overrides = ["httpx", "lightfuzz"]
     config_overrides = {
         "interactsh_disable": True,
-        "modules": {"lightfuzz": {"submodule_xss": False, "submodule_sqli": False, "submodule_cmdi": True}},
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": False,
+                "submodule_cmdi": True,
+                "submodule_path": False,
+            }
+        },
     }
 
     def request_handler(self, request):
@@ -604,7 +699,14 @@ class Test_Lightfuzz_cmdi_interactsh(Test_Lightfuzz_cmdi):
 
     config_overrides = {
         "interactsh_disable": False,
-        "modules": {"lightfuzz": {"submodule_xss": False, "submodule_sqli": False, "submodule_cmdi": True}},
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": False,
+                "submodule_cmdi": True,
+                "submodule_path": False,
+            }
+        },
     }
 
     def request_handler(self, request):

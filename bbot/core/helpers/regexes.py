@@ -95,6 +95,7 @@ input_tag_regex = re.compile(
 jquery_get_regex = re.compile(r"url:\s?[\"\'].+?\?(\w+)=")
 jquery_post_regex = re.compile(r"\$.post\([\'\"].+[\'\"].+\{(.+)\}")
 a_tag_regex = re.compile(r"<a[^>]*href=[\"\']([^\"\'?>]*)\?([^&\"\'=]+)=([^&\"\'=]+)")
+img_tag_regex = re.compile(r"<img[^>]*src=[\"\']([^\"\'?>]*)\?([^&\"\'=]+)=([^&\"\'=]+)")
 get_form_regex = re.compile(
     r"<form[^>]+(?:action=[\"']?([^\s\'\"]+)[\"\']?)?[^>]*method=[\"']?[gG][eE][tT][\"']?[^>]*>([\s\S]*?)<\/form>",
     re.DOTALL,

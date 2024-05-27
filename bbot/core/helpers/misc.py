@@ -1065,6 +1065,7 @@ def extract_params_html(html_data, compare_mode="getparam"):
                 log.debug(f"FOUND PARAM ({s}) IN A JQUERY POST PARAMS")
                 yield "POST", None, s, None, "jquery_post", None
 
+    # check a-tags for GET parameters
     a_tag = bbot_regexes.a_tag_regex.findall(html_data)
     for s in a_tag:
         log.debug(f"FOUND PARAM ({s[1]}) IN A TAG GET PARAMS")
@@ -1074,6 +1075,17 @@ def extract_params_html(html_data, compare_mode="getparam"):
         if original_value == None or original_value == "":
             original_value = "1"
         yield "GET", href, parameter, original_value, "a_tag", None
+
+    # check img tag src for GET parameters
+    img_tag = bbot_regexes.img_tag_regex.findall(html_data)
+    for s in img_tag:
+        log.debug(f"FOUND PARAM ({s[1]}) IN IMG TAG GET PARAMS")
+        href = s[0]
+        parameter = s[1]
+        original_value = s[2]
+        if original_value == None or original_value == "":
+            original_value = "1"
+        yield "GET", href, parameter, original_value, "img_tag", None
 
 
 def extract_words(data, acronyms=True, wordninja=True, model=None, max_length=100, word_regexes=None):

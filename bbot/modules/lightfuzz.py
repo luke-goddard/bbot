@@ -101,6 +101,51 @@ class BaseLightfuzz:
         )
 
 
+class PathTraversalFuzz(BaseLightfuzz):
+
+    async def fuzz(self):
+        cookies = self.event.data.get("assigned_cookies", {})
+        if "original_value" in self.event.data and self.event.data["original_value"] is not None:
+            probe_value = self.event.data["original_value"]
+        else:
+            probe_value = self.lightfuzz.helpers.rand_string(8, numeric_only=True)
+
+        http_compare = self.compare_baseline(self.event.data["type"], probe_value, cookies)
+
+        # Single dot traversal tolerance test (no encoding)
+
+        path_techniques = {
+            "single-dot traversal tolerance (no-encoding)": {
+                "singledot_payload": f"/./{probe_value}",
+                "doubledot_payload": f"/../{probe_value}",
+            },
+            "single-dot traversal tolerance (url-encoding)": {
+                "singledot_payload": urllib.parse.quote(f"/./{probe_value}".encode(), safe=""),
+                "doubledot_payload": urllib.parse.quote(f"/../{probe_value}".encode(), safe=""),
+            },
+        }
+
+        for path_technique, payloads in path_techniques.items():
+            singledot_probe = await self.compare_probe(
+                http_compare, self.event.data["type"], payloads["singledot_payload"], cookies
+            )
+            doubledot_probe = await self.compare_probe(
+                http_compare, self.event.data["type"], payloads["doubledot_payload"], cookies
+            )
+
+            if singledot_probe[0] == True and doubledot_probe[0] == False:
+                self.results.append(
+                    {
+                        "type": "FINDING",
+                        "description": f"POSSIBLE Path Traversal. Parameter: [{self.event.data['name']}] Parameter Type: [{self.event.data['type']}] Detection Method: [{path_technique}]",
+                    }
+                )
+                # no need to report both techniques if they both work
+                break
+
+        # Single dot traversal tolerance test (url-encoded)
+
+
 class CmdILightFuzz(BaseLightfuzz):
     async def fuzz(self):
 
@@ -131,7 +176,7 @@ class CmdILightFuzz(BaseLightfuzz):
             try:
                 echo_probe = f"{probe_value}{p} echo {canary} {p}"
                 if self.event.data["type"] == "GETPARAM":
-                    echo_probe = urllib.parse.quote(echo_probe.encode())
+                    echo_probe = urllib.parse.quote(echo_probe.encode(), safe="")
                 cmdi_probe = await self.compare_probe(http_compare, self.event.data["type"], echo_probe, cookies)
                 if cmdi_probe[3]:
                     if canary in cmdi_probe[3].text and "echo" not in cmdi_probe[3].text:
@@ -165,7 +210,7 @@ class CmdILightFuzz(BaseLightfuzz):
                 interactsh_probe = f"{p} nslookup {subdomain_tag}.{self.lightfuzz.interactsh_domain} {p}"
 
                 if self.event.data["type"] == "GETPARAM":
-                    interactsh_probe = urllib.parse.quote(interactsh_probe.encode())
+                    interactsh_probe = urllib.parse.quote(interactsh_probe.encode(), safe="")
                 await self.standard_probe(
                     self.event.data["type"], cookies, f"{probe_value}{interactsh_probe}", timeout=15
                 )
@@ -343,12 +388,19 @@ class lightfuzz(BaseModule):
     watched_events = ["URL", "HTTP_RESPONSE", "WEB_PARAMETER"]
     produced_events = ["FINDING", "VULNERABILITY"]
     flags = ["active", "web-thorough"]
-    options = {"force_common_headers": False, "submodule_sqli": True, "submodule_xss": True, "submodule_cmdi": True}
+    options = {
+        "force_common_headers": False,
+        "submodule_sqli": True,
+        "submodule_xss": True,
+        "submodule_cmdi": True,
+        "submodule_path": True,
+    }
     options_desc = {
         "force_common_headers": "Force emit commonly exploitable parameters that may be difficult to detect",
         "submodule_sqli": "Enable the SQL Injection Submodule",
         "submodule_xss": "Enable the XSS Submodule",
         "submodule_cmdi": "Enable the Command Injection Submodule",
+        "submodule_path": "Enable the Path Traversal Submodule",
     }
     meta = {"description": "Find Web Parameters and Lightly Fuzz them using a heuristic based scanner"}
     common_headers = ["x-forwarded-for", "user-agent"]
@@ -377,6 +429,7 @@ class lightfuzz(BaseModule):
         self.submodule_sqli = False
         self.submodule_cmdi = False
         self.submodule_xss = False
+        self.submodule_path = False
 
         if self.config.get("submodule_sqli", False) == True:
             self.submodule_sqli = True
@@ -397,9 +450,17 @@ class lightfuzz(BaseModule):
                 except InteractshError as e:
                     self.warning(f"Interactsh failure: {e}")
 
-        if self.submodule_sqli == False and self.submodule_cmdi == False and self.submodule_xss == False:
-            self.warning("All lightfuzz submodules disabled, disabling module")
-            return None
+        if self.config.get("submodule_path", False) == True:
+            self.submodule_path = True
+            self.hugeinfo("Lightfuzz Path Traversal Submodule Enabled")
+
+        if (
+            self.submodule_sqli == False
+            and self.submodule_cmdi == False
+            and self.submodule_xss == False
+            and self.submodule_path == False
+        ):
+            self.hugeinfo("All lightfuzz submodules disabled, harvesting parameters only")
 
         return True
 
@@ -567,6 +628,10 @@ class lightfuzz(BaseModule):
             if self.submodule_cmdi:
                 self.debug("Starting CMDI FUZZ")
                 await self.run_submodule(CmdILightFuzz, event)
+
+            if self.submodule_path:
+                self.debug("Staring Path Traversal FUZZ")
+                await self.run_submodule(PathTraversalFuzz, event)
 
     async def filter_event(self, event):
         if "in-scope" not in event.tags:
