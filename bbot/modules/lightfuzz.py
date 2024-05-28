@@ -623,9 +623,6 @@ class lightfuzz(BaseModule):
                 if in_bl == False:
 
                     parsed_url = urlparse(url)
-                    self.critical(parsed_url)
-                    self.critical(parsed_url.hostname)
-
                     description = f"HTTP Extracted Parameter [{parameter_name}]"
                     data = {
                         "host": parsed_url.hostname,

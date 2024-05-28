@@ -3,7 +3,18 @@ from .base import ModuleTestBase
 
 class TestHunt(ModuleTestBase):
     targets = ["http://127.0.0.1:8888"]
-    modules_overrides = ["httpx", "hunt"]
+    modules_overrides = ["httpx", "hunt", "lightfuzz"]
+    config_overrides = {
+        "interactsh_disable": True,
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": False,
+                "submodule_cmdi": False,
+                "submodule_path": False,
+            }
+        },
+    }
 
     async def setup_after_prep(self, module_test):
         expect_args = {"method": "GET", "uri": "/"}
