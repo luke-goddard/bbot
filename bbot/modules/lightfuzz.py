@@ -140,6 +140,7 @@ class PathTraversalFuzz(BaseLightfuzz):
                     and doubledot_probe[0] == False
                     and doubledot_probe[3] != None
                     and doubledot_probe[3].status_code != 403
+                    and doubledot_probe[1] != ["header"]
                 ):
                     self.results.append(
                         {
