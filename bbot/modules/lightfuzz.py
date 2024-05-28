@@ -112,7 +112,7 @@ class PathTraversalFuzz(BaseLightfuzz):
 
         http_compare = self.compare_baseline(self.event.data["type"], probe_value, cookies)
 
-        # Single dot traversal tolerance test (no encoding)
+        # Single dot traversal tolerance test
 
         path_techniques = {
             "single-dot traversal tolerance (no-encoding)": {
@@ -133,7 +133,12 @@ class PathTraversalFuzz(BaseLightfuzz):
                 http_compare, self.event.data["type"], payloads["doubledot_payload"], cookies
             )
 
-            if singledot_probe[0] == True and doubledot_probe[0] == False and doubledot_probe[3].status_code != 403:
+            if (
+                singledot_probe[0] == True
+                and doubledot_probe[0] == False
+                and doubledot_probe[3] != None
+                and doubledot_probe[3].status_code != 403
+            ):
                 self.results.append(
                     {
                         "type": "FINDING",
@@ -142,8 +147,6 @@ class PathTraversalFuzz(BaseLightfuzz):
                 )
                 # no need to report both techniques if they both work
                 break
-
-        # Single dot traversal tolerance test (url-encoded)
 
 
 class CmdILightFuzz(BaseLightfuzz):
