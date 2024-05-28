@@ -126,27 +126,32 @@ class PathTraversalFuzz(BaseLightfuzz):
         }
 
         for path_technique, payloads in path_techniques.items():
-            singledot_probe = await self.compare_probe(
-                http_compare, self.event.data["type"], payloads["singledot_payload"], cookies
-            )
-            doubledot_probe = await self.compare_probe(
-                http_compare, self.event.data["type"], payloads["doubledot_payload"], cookies
-            )
 
-            if (
-                singledot_probe[0] == True
-                and doubledot_probe[0] == False
-                and doubledot_probe[3] != None
-                and doubledot_probe[3].status_code != 403
-            ):
-                self.results.append(
-                    {
-                        "type": "FINDING",
-                        "description": f"POSSIBLE Path Traversal. Parameter: [{self.event.data['name']}] Parameter Type: [{self.event.data['type']}] Detection Method: [{path_technique}]",
-                    }
+            try:
+                singledot_probe = await self.compare_probe(
+                    http_compare, self.event.data["type"], payloads["singledot_payload"], cookies
                 )
-                # no need to report both techniques if they both work
-                break
+                doubledot_probe = await self.compare_probe(
+                    http_compare, self.event.data["type"], payloads["doubledot_payload"], cookies
+                )
+
+                if (
+                    singledot_probe[0] == True
+                    and doubledot_probe[0] == False
+                    and doubledot_probe[3] != None
+                    and doubledot_probe[3].status_code != 403
+                ):
+                    self.results.append(
+                        {
+                            "type": "FINDING",
+                            "description": f"POSSIBLE Path Traversal. Parameter: [{self.event.data['name']}] Parameter Type: [{self.event.data['type']}] Detection Method: [{path_technique}]",
+                        }
+                    )
+                    # no need to report both techniques if they both work
+                    break
+            except HttpCompareError as e:
+                self.lightfuzz.debug(e)
+                continue
 
 
 class CmdILightFuzz(BaseLightfuzz):
