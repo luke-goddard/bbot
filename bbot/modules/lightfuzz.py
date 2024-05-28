@@ -2,7 +2,7 @@ from bbot.modules.base import BaseModule
 import statistics
 import re
 import urllib.parse
-
+from urllib.parse import urlparse
 from bbot.core.helpers.misc import extract_params_html
 from bbot.errors import InteractshError, HttpCompareError
 
@@ -622,9 +622,13 @@ class lightfuzz(BaseModule):
 
                 if in_bl == False:
 
+                    parsed_url = urlparse(url)
+                    self.critical(parsed_url)
+                    self.critical(parsed_url.hostname)
+
                     description = f"HTTP Extracted Parameter [{parameter_name}]"
                     data = {
-                        "host": str(event.host),
+                        "host": parsed_url.hostname,
                         "type": paramtype,
                         "name": parameter_name,
                         "original_value": original_value,
@@ -656,11 +660,6 @@ class lightfuzz(BaseModule):
             if self.submodule_path:
                 self.debug("Staring Path Traversal FUZZ")
                 await self.run_submodule(PathTraversalFuzz, event)
-
-    async def filter_event(self, event):
-        if "in-scope" not in event.tags:
-            return False
-        return True
 
     async def cleanup(self):
         if self.interactsh_instance:
