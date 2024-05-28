@@ -72,6 +72,57 @@ class Test_Lightfuzz_path_singledot(ModuleTestBase):
         assert pathtraversal_finding_emitted, "Path Traversal single dot tolerance FINDING not emitted"
 
 
+# Path Traversal Absolute path
+class Test_Lightfuzz_path_absolute(Test_Lightfuzz_path_singledot):
+
+    etc_passwd = """
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+"""
+
+    async def setup_after_prep(self, module_test):
+
+        expect_args = {"method": "GET", "uri": "/images", "query_string": "filename=/etc/passwd"}
+        respond_args = {"response_data": self.etc_passwd}
+        module_test.set_expect_requests(expect_args=expect_args, respond_args=respond_args)
+
+        expect_args = {"method": "GET", "uri": "/images"}
+        respond_args = {"response_data": "<html><head><body><p>ERROR: Invalid File</p></body></html>", "status": 200}
+        module_test.set_expect_requests(expect_args=expect_args, respond_args=respond_args)
+
+        expect_args = {"method": "GET", "uri": "/"}
+        respond_args = {
+            "response_data": '"<section class="images"><img src="/images?filename=default.jpg"></section>',
+            "status": 200,
+        }
+        module_test.set_expect_requests(expect_args=expect_args, respond_args=respond_args)
+
+    def check(self, module_test, events):
+
+        web_parameter_emitted = False
+        pathtraversal_finding_emitted = False
+        for e in events:
+            if e.type == "WEB_PARAMETER":
+                if "HTTP Extracted Parameter [filename]" in e.data["description"]:
+                    web_parameter_emitted = True
+
+            if e.type == "FINDING":
+                if (
+                    "POSSIBLE Path Traversal. Parameter: [filename] Parameter Type: [GETPARAM] Detection Method: [Absolute Path: /etc/passwd]"
+                    in e.data["description"]
+                ):
+                    pathtraversal_finding_emitted = True
+
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
+        assert pathtraversal_finding_emitted, "Path Traversal single dot tolerance FINDING not emitted"
+
+
 # Between Tags XSS Detection
 class Test_Lightfuzz_xss(ModuleTestBase):
     targets = ["http://127.0.0.1:8888"]

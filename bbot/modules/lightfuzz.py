@@ -154,6 +154,21 @@ class PathTraversalFuzz(BaseLightfuzz):
                 self.lightfuzz.debug(e)
                 continue
 
+        # Absolute path test
+
+        absolute_paths = {r"c:\\windows\\win.ini": "; for 16-bit app support", "/etc/passwd": "root:"}
+
+        for path, trigger in absolute_paths.items():
+            r = await self.standard_probe(self.event.data["type"], cookies, path)
+            if trigger in r.text:
+                self.lightfuzz.hugeinfo("MADE IT")
+                self.results.append(
+                    {
+                        "type": "FINDING",
+                        "description": f"POSSIBLE Path Traversal. Parameter: [{self.event.data['name']}] Parameter Type: [{self.event.data['type']}] Detection Method: [Absolute Path: {path}]",
+                    }
+                )
+
 
 class CmdILightFuzz(BaseLightfuzz):
     async def fuzz(self):
