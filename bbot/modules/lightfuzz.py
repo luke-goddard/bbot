@@ -684,8 +684,6 @@ class lightfuzz(BaseModule):
 
                     parsed_url = urlparse(url)
                     description = f"HTTP Extracted Parameter [{parameter_name}]"
-                    self.critical(self.retain_querystring)
-                    self.hugeinfo(event.parsed_url)
                     data = {
                         "host": parsed_url.hostname,
                         "type": paramtype,
