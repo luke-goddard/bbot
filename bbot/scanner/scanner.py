@@ -187,7 +187,7 @@ class Scanner:
         self.url_extension_httpx_only = set(e.lower() for e in self.config.get("url_extension_httpx_only", []))
 
         # url querystring behavior
-        self.url_remove_querystring = self.config.get("url_remove_querystring", True)
+        self.url_querystring_remove = self.config.get("url_querystring_remove", True)
 
         # custom HTTP headers warning
         self.custom_http_headers = self.config.get("http_headers", {})

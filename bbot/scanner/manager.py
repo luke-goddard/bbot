@@ -152,6 +152,7 @@ class ScanIngress(InterceptModule):
         """
         try:
             event_hash = event.module._outgoing_dedup_hash(event)
+
         except AttributeError:
             module_name = str(getattr(event, "module", ""))
             event_hash = hash((event, module_name))

@@ -2,8 +2,8 @@ from bbot.modules.base import BaseModule
 import statistics
 import re
 import urllib.parse
-from urllib.parse import urlparse
-from bbot.core.helpers.misc import extract_params_html
+from urllib.parse import urlparse, urljoin, parse_qs, urlunparse
+from bbot.core.helpers.misc import extract_params_html, extract_params_location
 from bbot.errors import InteractshError, HttpCompareError
 
 
@@ -88,7 +88,7 @@ class BaseLightfuzz:
                 data.update(self.event.data["additional_params"])
         else:
             data = {}
-
+        self.lightfuzz.debug(f"standard_probe requested URL: [{url}]")
         return await self.lightfuzz.helpers.request(
             method=method,
             cookies=cookies,
@@ -101,7 +101,21 @@ class BaseLightfuzz:
         )
 
 
-class PathTraversalFuzz(BaseLightfuzz):
+class SSTILightfuzz(BaseLightfuzz):
+    async def fuzz(self):
+        cookies = self.event.data.get("assigned_cookies", {})
+        probe_value = "<%25%3d%201337*1337%20%25>"
+        r = await self.standard_probe(self.event.data["type"], cookies, probe_value)
+        if r and "1787569" in r.text:
+            self.results.append(
+                {
+                    "type": "FINDING",
+                    "description": f"POSSIBLE Server-side Template Injection. Parameter: [{self.event.data['name']}] Parameter Type: [{self.event.data['type']}] Detection Method: [Integer Multiplication]",
+                }
+            )
+
+
+class PathTraversalLightfuzz(BaseLightfuzz):
 
     async def fuzz(self):
         cookies = self.event.data.get("assigned_cookies", {})
@@ -417,6 +431,8 @@ class lightfuzz(BaseModule):
         "submodule_xss": True,
         "submodule_cmdi": True,
         "submodule_path": True,
+        "submodule_ssti": True,
+        "retain_querystring": False,
     }
     options_desc = {
         "force_common_headers": "Force emit commonly exploitable parameters that may be difficult to detect",
@@ -424,6 +440,8 @@ class lightfuzz(BaseModule):
         "submodule_xss": "Enable the XSS Submodule",
         "submodule_cmdi": "Enable the Command Injection Submodule",
         "submodule_path": "Enable the Path Traversal Submodule",
+        "submodule_ssti": "Enable the Server-side Template Injection Submodule",
+        "retain_querystring": "Keep the querystring intact on emitted WEB_PARAMETERS",
     }
     meta = {"description": "Find Web Parameters and Lightly Fuzz them using a heuristic based scanner"}
     common_headers = ["x-forwarded-for", "user-agent"]
@@ -453,6 +471,7 @@ class lightfuzz(BaseModule):
         self.submodule_cmdi = False
         self.submodule_xss = False
         self.submodule_path = False
+        self.submodule_ssti = False
 
         if self.config.get("submodule_sqli", False) == True:
             self.submodule_sqli = True
@@ -461,6 +480,10 @@ class lightfuzz(BaseModule):
         if self.config.get("submodule_xss", False) == True:
             self.submodule_xss = True
             self.hugeinfo("Lightfuzz XSS Submodule Enabled")
+
+        if self.config.get("submodule_ssti", False) == True:
+            self.submodule_ssti = True
+            self.hugeinfo("Lightfuzz SSTI Submodule Enabled")
 
         if self.config.get("submodule_cmdi", False) == True:
             self.submodule_cmdi = True
@@ -482,8 +505,13 @@ class lightfuzz(BaseModule):
             and self.submodule_cmdi == False
             and self.submodule_xss == False
             and self.submodule_path == False
+            and self.submodule_ssti == False
         ):
             self.hugeinfo("All lightfuzz submodules disabled, harvesting parameters only")
+
+        self.retain_querystring = False
+        if self.config.get("retain_querystring", False) == True:
+            self.retain_querystring = True
 
         return True
 
@@ -517,6 +545,29 @@ class lightfuzz(BaseModule):
                 event.data["description"],
                 event.data.get("type", ""),
                 event.data.get("name", ""),
+            )
+        )
+
+    def in_bl(self, value):
+        in_bl = False
+        for bl_param in self.parameter_blacklist:
+            if bl_param.lower() == value.lower():
+                in_bl = True
+        return in_bl
+
+    def url_unparse(self, param_type, parsed_url):
+        if param_type == "GETPARAM":
+            querystring = ""
+        else:
+            querystring = parsed_url.query
+        return urlunparse(
+            (
+                parsed_url.scheme,
+                parsed_url.netloc,
+                parsed_url.path,
+                "",
+                querystring if self.retain_querystring else "",
+                "",
             )
         )
 
@@ -554,10 +605,9 @@ class lightfuzz(BaseModule):
 
         if event.type == "HTTP_RESPONSE":
             assigned_cookies = {}
-
             headers = event.data.get("header", "")
             for k, v in headers.items():
-                if k == "set_cookie":
+                if k.lower() == "set_cookie":
 
                     if "=" not in v:
                         self.debug(f"Cookie found without '=': {v}")
@@ -567,12 +617,7 @@ class lightfuzz(BaseModule):
                         cookie_name = v.split("=")[0]
                         cookie_value = v.split("=")[1].split(";")[0]
 
-                        in_bl = False
-                        for bl_param in self.parameter_blacklist:
-                            if bl_param.lower() == cookie_name.lower():
-                                in_bl = True
-
-                        if in_bl == False:
+                        if self.in_bl(cookie_value) == False:
                             assigned_cookies[cookie_name] = cookie_value
                             description = f"Set-Cookie Assigned Cookie [{cookie_name}]"
                             data = {
@@ -580,12 +625,33 @@ class lightfuzz(BaseModule):
                                 "type": "COOKIE",
                                 "name": cookie_name,
                                 "original_value": cookie_value,
-                                "url": event.data["url"],
+                                "url": self.url_unparse("COOKIE", event.parsed_url),
                                 "description": description,
                             }
                             await self.emit_event(data, "WEB_PARAMETER", event)
                         else:
                             self.debug(f"blocked cookie parameter [{cookie_name}] due to BL match")
+                if k.lower() == "location":
+                    for (
+                        method,
+                        parsed_url,
+                        parameter_name,
+                        original_value,
+                        regex_name,
+                        additional_params,
+                    ) in extract_params_location(v, event.parsed_url):
+                        if self.in_bl(parameter_name) == False:
+                            description = f"HTTP Extracted Parameter [{parameter_name}]"
+                            data = {
+                                "host": parsed_url.hostname,
+                                "type": "GETPARAM",
+                                "name": parameter_name,
+                                "original_value": original_value,
+                                "url": self.url_unparse("GETPARAM", parsed_url),
+                                "description": description,
+                                "additional_params": additional_params,
+                            }
+                            await self.emit_event(data, "WEB_PARAMETER", event)
 
             body = event.data.get("body", "")
 
@@ -614,21 +680,18 @@ class lightfuzz(BaseModule):
                     self.warning(f"Invalid method received! ({method})")
                     continue
 
-                for bl_param in self.parameter_blacklist:
-                    if parameter_name.lower() == bl_param.lower():
-                        in_bl = True
-                        continue
-
-                if in_bl == False:
+                if self.in_bl(parameter_name) == False:
 
                     parsed_url = urlparse(url)
                     description = f"HTTP Extracted Parameter [{parameter_name}]"
+                    self.critical(self.retain_querystring)
+                    self.hugeinfo(event.parsed_url)
                     data = {
                         "host": parsed_url.hostname,
                         "type": paramtype,
                         "name": parameter_name,
                         "original_value": original_value,
-                        "url": url,
+                        "url": self.url_unparse(paramtype, parsed_url),
                         "description": description,
                         "additional_params": additional_params,
                         "assigned_cookies": assigned_cookies,
@@ -655,7 +718,11 @@ class lightfuzz(BaseModule):
 
             if self.submodule_path:
                 self.debug("Staring Path Traversal FUZZ")
-                await self.run_submodule(PathTraversalFuzz, event)
+                await self.run_submodule(PathTraversalLightfuzz, event)
+
+            if self.submodule_ssti:
+                self.debug("Staring Server-side Template Injection FUZZ")
+                await self.run_submodule(SSTILightfuzz, event)
 
     async def cleanup(self):
         if self.interactsh_instance:

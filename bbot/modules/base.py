@@ -908,6 +908,7 @@ class BaseModule:
         """
         Determines the criteria for what is considered to be a duplicate event if `accept_dupes` is False.
         """
+
         if self.per_host_only:
             return self.get_per_host_hash(event), "per_host_only=True"
         if self.per_hostport_only:

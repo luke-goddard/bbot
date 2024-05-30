@@ -189,7 +189,6 @@ class URLExtractor(BaseExtractor):
                 abort_if=abort_if,
             )
             return
-
         return self.excavate.make_event(result, "URL_UNVERIFIED", source=event)
 
 
@@ -391,7 +390,7 @@ class excavate(BaseInternalModule):
                         self.verbose(f"Exceeded max HTTP redirects ({self.max_redirects}): {location}")
 
             # revisit this before merging to dev!
-            if self.scan.config.get("url_remove_querystring", True) == False:
+            if self.scan.config.get("url_querystring_remove", True) == False:
                 body = event.data.get("body", "")
             else:
                 body = await self.helpers.re.recursive_decode(event.data.get("body", ""))

@@ -715,6 +715,31 @@ def test_liststring_invalidfnchars(helpers):
     assert str(e.value) == "Invalid character in string: bbot|test"
 
 
+# test extract_params_location
+@pytest.mark.asyncio
+async def test_extract_params_location(helpers):
+    from urllib.parse import urlparse
+
+    absolute_path = list(
+        helpers.extract_params_location("http://fullurl.com/whatever?foo=bar", urlparse("http://fullurl.com/"))
+    )
+    assert absolute_path[0][1].netloc == "fullurl.com"
+    assert absolute_path[0][2] == "foo"
+    assert absolute_path[0][3] == "bar"
+
+    relative_path = list(helpers.extract_params_location("/path?foo2=bar2", urlparse("http://fullurl2.com/")))
+    assert relative_path[0][1].netloc == "fullurl2.com"
+    assert relative_path[0][2] == "foo2"
+    assert relative_path[0][3] == "bar2"
+
+    different_host = list(
+        helpers.extract_params_location("http://fullurl3.com/whatever?foo3=bar3", urlparse("http://fullurl.com/"))
+    )
+    assert different_host[0][1].netloc == "fullurl3.com"
+    assert different_host[0][2] == "foo3"
+    assert different_host[0][3] == "bar3"
+
+
 # test extract_params_html
 @pytest.mark.asyncio
 async def test_extract_params_html(helpers):

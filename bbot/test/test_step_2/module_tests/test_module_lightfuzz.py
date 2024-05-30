@@ -5,6 +5,153 @@ from werkzeug.wrappers import Response
 from urllib.parse import unquote
 
 
+class Test_Lightfuzz_querystring_retain(ModuleTestBase):
+    targets = ["http://127.0.0.1:8888/?foo=1"]
+    modules_overrides = ["httpx", "lightfuzz", "excavate"]
+    config_overrides = {
+        "url_querystring_remove": False,
+        "url_querystring_collapse": False,
+        "interactsh_disable": True,
+        "web_spider_depth": 4,
+        "web_spider_distance": 4,
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": False,
+                "submodule_cmdi": False,
+                "submodule_path": False,
+                "submodule_ssti": False,
+                "retain_querystring": True,
+            }
+        },
+    }
+
+    async def setup_after_prep(self, module_test):
+        expect_args = {"method": "GET", "uri": "/", "query_string": "foo=1"}
+        respond_args = {
+            "response_data": "<html>alive</html>",
+            "headers": {"Set-Cookie": "a=b"},
+            "status": 200,
+        }
+        module_test.set_expect_requests(expect_args=expect_args, respond_args=respond_args)
+
+    def check(self, module_test, events):
+        web_parameter_emit = False
+        for e in events:
+            if e.type == "WEB_PARAMETER" and "foo" in e.data["url"]:
+                web_parameter_emit = True
+
+        assert web_parameter_emit
+
+
+class Test_Lightfuzz_querystring_noretain(Test_Lightfuzz_querystring_retain):
+
+    config_overrides = {
+        "url_querystring_remove": False,
+        "url_querystring_collapse": False,
+        "interactsh_disable": True,
+        "web_spider_depth": 4,
+        "web_spider_distance": 4,
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": False,
+                "submodule_cmdi": False,
+                "submodule_path": False,
+                "submodule_ssti": False,
+                "retain_querystring": False,
+            }
+        },
+    }
+
+    def check(self, module_test, events):
+        web_parameter_emit = False
+        for e in events:
+            if e.type == "WEB_PARAMETER" and "foo" not in e.data["url"]:
+                web_parameter_emit = True
+
+        assert web_parameter_emit
+
+
+class Test_Lightfuzz_querystring_noremove(ModuleTestBase):
+    html_body = '<html><a class="button" href="/product?productId=7">View details</a><a class="button" href="/product?productId=8">View details</a>'
+
+    targets = ["http://127.0.0.1:8888"]
+    modules_overrides = ["httpx", "lightfuzz", "excavate"]
+    config_overrides = {
+        "url_querystring_remove": False,
+        "interactsh_disable": True,
+        "web_spider_depth": 4,
+        "web_spider_distance": 4,
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": False,
+                "submodule_cmdi": False,
+                "submodule_path": False,
+                "submodule_ssti": False,
+            }
+        },
+    }
+
+    async def setup_after_prep(self, module_test):
+        expect_args = {"method": "GET", "uri": "/"}
+        respond_args = {
+            "response_data": self.html_body,
+            "status": 200,
+        }
+        module_test.set_expect_requests(expect_args=expect_args, respond_args=respond_args)
+
+        expect_args = {"method": "GET", "uri": "/product"}
+        respond_args = {
+            "response_data": "alive",
+            "status": 200,
+        }
+        module_test.set_expect_requests(expect_args=expect_args, respond_args=respond_args)
+
+    def check(self, module_test, events):
+
+        web_parameter_emit = False
+        web_parameter_outofscope = False
+
+        for e in events:
+            if e.type == "WEB_PARAMETER":
+                web_parameter_emit = True
+
+        count_url_events = sum(1 for event in events if event.type == "URL")
+        assert count_url_events == 2
+
+
+class Test_Lightfuzz_querystring_nocollapse(Test_Lightfuzz_querystring_noremove):
+
+    config_overrides = {
+        "url_querystring_remove": False,
+        "url_querystring_collapse": False,
+        "interactsh_disable": True,
+        "web_spider_depth": 4,
+        "web_spider_distance": 4,
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": False,
+                "submodule_cmdi": False,
+                "submodule_path": False,
+                "submodule_ssti": False,
+            }
+        },
+    }
+
+    def check(self, module_test, events):
+
+        web_parameter_emit = False
+        web_parameter_outofscope = False
+        for e in events:
+            if e.type == "WEB_PARAMETER":
+                web_parameter_emit = True
+        count_url_events = sum(1 for event in events if event.type == "URL")
+        assert count_url_events == 3
+
+
 class Test_Lightfuzz_webparameter_outofscope(ModuleTestBase):
 
     html_body = "<html><a class=button href='https://socialmediasite.com/send?text=foo'><a class=button href='https://outofscope.com/send?text=foo'></html>"
@@ -19,6 +166,7 @@ class Test_Lightfuzz_webparameter_outofscope(ModuleTestBase):
                 "submodule_sqli": False,
                 "submodule_cmdi": False,
                 "submodule_path": False,
+                "submodule_ssti": False,
             }
         },
     }
@@ -58,6 +206,7 @@ class Test_Lightfuzz_path_singledot(ModuleTestBase):
                 "submodule_sqli": False,
                 "submodule_cmdi": False,
                 "submodule_path": True,
+                "submodule_ssti": False,
             }
         },
     }
@@ -164,6 +313,62 @@ lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
         assert pathtraversal_finding_emitted, "Path Traversal single dot tolerance FINDING not emitted"
 
 
+# SSTI Integer Multiplcation
+class Test_Lightfuzz_ssti_multiply(ModuleTestBase):
+    targets = ["http://127.0.0.1:8888"]
+    modules_overrides = ["httpx", "lightfuzz"]
+    config_overrides = {
+        "interactsh_disable": True,
+        "modules": {
+            "lightfuzz": {
+                "submodule_xss": False,
+                "submodule_sqli": False,
+                "submodule_cmdi": False,
+                "submodule_path": False,
+                "submodule_ssti": True,
+            }
+        },
+    }
+
+    def request_handler(self, request):
+        qs = str(request.query_string.decode())
+        if "data=" in qs:
+            value = qs.split("=")[1]
+            if "&" in value:
+                value = value.split("&")[0]
+            nums = value.split("%20")[1].split("*")
+            ints = [int(s) for s in nums]
+            ssti_block = f"<html><div class=data>{str(ints[0] * ints[1])}</div</html>"
+        return Response(ssti_block, status=200)
+
+    async def setup_after_prep(self, module_test):
+        expect_args = {"method": "GET", "uri": "/"}
+        respond_args = {"response_data": "", "status": 302, "headers": {"Location": "/test?data=1"}}
+        module_test.set_expect_requests(expect_args=expect_args, respond_args=respond_args)
+
+        expect_args = re.compile("/test.*")
+        module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
+
+    def check(self, module_test, events):
+
+        web_parameter_emitted = False
+        ssti_finding_emitted = False
+        for e in events:
+            if e.type == "WEB_PARAMETER":
+                if "HTTP Extracted Parameter [data]" in e.data["description"]:
+                    web_parameter_emitted = True
+
+            if e.type == "FINDING":
+                if (
+                    "POSSIBLE Server-side Template Injection. Parameter: [data] Parameter Type: [GETPARAM] Detection Method: [Integer Multiplication]"
+                    in e.data["description"]
+                ):
+                    ssti_finding_emitted = True
+
+        assert web_parameter_emitted, "WEB_PARAMETER was not emitted"
+        assert ssti_finding_emitted, "SSTI integer multiply FINDING not emitted"
+
+
 # Between Tags XSS Detection
 class Test_Lightfuzz_xss(ModuleTestBase):
     targets = ["http://127.0.0.1:8888"]
@@ -176,6 +381,7 @@ class Test_Lightfuzz_xss(ModuleTestBase):
                 "submodule_sqli": False,
                 "submodule_cmdi": False,
                 "submodule_path": False,
+                "submodule_ssti": False,
             }
         },
     }
@@ -194,10 +400,8 @@ class Test_Lightfuzz_xss(ModuleTestBase):
         """
         if "search=" in qs:
             value = qs.split("=")[1]
-
             if "&" in value:
                 value = value.split("&")[0]
-
             xss_block = f"""
         <section class=blog-header>
             <h1>0 search results for '{unquote(value)}'</h1>
@@ -208,7 +412,6 @@ class Test_Lightfuzz_xss(ModuleTestBase):
         return Response(parameter_block, status=200)
 
     async def setup_after_prep(self, module_test):
-
         module_test.scan.modules["lightfuzz"].helpers.rand_string = lambda *args, **kwargs: "AAAAAAAAAAAAAA"
         expect_args = re.compile("/")
         module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
@@ -242,7 +445,6 @@ class Test_Lightfuzz_xss_intag(Test_Lightfuzz_xss):
         """
         if "foo=" in qs:
             value = qs.split("=")[1]
-
             if "&" in value:
                 value = value.split("&")[0]
 
@@ -264,7 +466,6 @@ class Test_Lightfuzz_xss_intag(Test_Lightfuzz_xss):
         module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
 
     def check(self, module_test, events):
-
         web_parameter_emitted = False
         original_value_captured = False
         xss_finding_emitted = False
@@ -288,7 +489,6 @@ class Test_Lightfuzz_xss_intag(Test_Lightfuzz_xss):
 class Test_Lightfuzz_xss_injs(Test_Lightfuzz_xss):
     def request_handler(self, request):
         qs = str(request.query_string.decode())
-
         parameter_block = """
         <html>
             <a href="/otherpage.php?language=en">Link</a>
@@ -317,7 +517,6 @@ console.log(lang);
         return Response(parameter_block, status=200)
 
     async def setup_after_prep(self, module_test):
-
         module_test.scan.modules["lightfuzz"].helpers.rand_string = lambda *args, **kwargs: "AAAAAAAAAAAAAA"
         expect_args = re.compile("/")
         module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
@@ -325,7 +524,6 @@ console.log(lang);
         module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
 
     def check(self, module_test, events):
-
         web_parameter_emitted = False
         original_value_captured = False
         xss_finding_emitted = False
@@ -357,14 +555,13 @@ class Test_Lightfuzz_sqli(ModuleTestBase):
                 "submodule_sqli": True,
                 "submodule_cmdi": False,
                 "submodule_path": False,
+                "submodule_ssti": False,
             }
         },
     }
 
     def request_handler(self, request):
-
         qs = str(request.query_string.decode())
-
         parameter_block = """
         <section class=search>
             <form action=/ method=GET>
@@ -405,14 +602,12 @@ class Test_Lightfuzz_sqli(ModuleTestBase):
         module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
 
     def check(self, module_test, events):
-
         web_parameter_emitted = False
         sqli_finding_emitted = False
         for e in events:
             if e.type == "WEB_PARAMETER":
                 if "HTTP Extracted Parameter [search]" in e.data["description"]:
                     web_parameter_emitted = True
-
             if e.type == "FINDING":
                 if (
                     "Possible SQL Injection. Parameter: [search] Parameter Type: [GETPARAM] Detection Method: [Single Quote/Two Single Quote]"
@@ -436,6 +631,7 @@ class Test_Lightfuzz_sqli_post(ModuleTestBase):
                 "submodule_sqli": True,
                 "submodule_cmdi": False,
                 "submodule_path": False,
+                "submodule_ssti": False,
             }
         },
     }
@@ -483,7 +679,6 @@ class Test_Lightfuzz_sqli_post(ModuleTestBase):
         module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
 
     def check(self, module_test, events):
-
         web_parameter_emitted = False
         sqli_finding_emitted = False
         for e in events:
@@ -506,7 +701,6 @@ class Test_Lightfuzz_sqli_post(ModuleTestBase):
 class Test_Lightfuzz_sqli_headers(Test_Lightfuzz_sqli):
 
     async def setup_after_prep(self, module_test):
-
         module_test.scan.modules["lightfuzz"].helpers.rand_string = lambda *args, **kwargs: "AAAAAAAAAAAAAA"
         expect_args = re.compile("/")
         module_test.set_expect_requests_handler(expect_args=expect_args, request_handler=self.request_handler)
@@ -550,7 +744,6 @@ class Test_Lightfuzz_sqli_headers(Test_Lightfuzz_sqli):
             <p>test: {header_value}</p>
             </html>
             """
-
             header_block_error = f"""
             <html>
             <p>placeholder</p>
@@ -717,6 +910,7 @@ class Test_Lightfuzz_cmdi(ModuleTestBase):
                 "submodule_sqli": False,
                 "submodule_cmdi": True,
                 "submodule_path": False,
+                "submodule_ssti": False,
             }
         },
     }
@@ -797,6 +991,7 @@ class Test_Lightfuzz_cmdi_interactsh(Test_Lightfuzz_cmdi):
                 "submodule_sqli": False,
                 "submodule_cmdi": True,
                 "submodule_path": False,
+                "submodule_ssti": False,
             }
         },
     }

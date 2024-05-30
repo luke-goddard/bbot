@@ -113,7 +113,9 @@ ssl_verify: false
 # How many scan results to keep before cleaning up the older ones
 keep_scans: 20
 # Disable the default behavior of stripping querystring from URLs
-url_remove_querystring: True
+url_querystring_remove: True
+# When query string is not removed, collapse parameter values down to a single value per parameter
+url_querystring_collapse: True
 # Completely ignore URLs with these extensions
 url_extension_blacklist:
     # images

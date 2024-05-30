@@ -182,9 +182,9 @@ def clean_url(url: str):
     parsed = parse_url(url)
 
     # FORCING FOR NOW!
-    url_remove_querystring = False
+    url_querystring_remove = False
 
-    if url_remove_querystring:
+    if url_querystring_remove:
         parsed = parsed._replace(netloc=str(parsed.netloc).lower(), fragment="", query="")
     else:
         parsed = parsed._replace(netloc=str(parsed.netloc).lower(), fragment="")

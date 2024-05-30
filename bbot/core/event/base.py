@@ -979,11 +979,20 @@ class URL_UNVERIFIED(BaseEvent):
             data = "spider-danger" + data
         # this is a hack which needs to be replaced with a real fix in bbot-2.0 branch
         if self.scan is not None:
-            if self.scan.config.get("url_remove_querystring", True) == False and self.parsed_url.query:
-                # remove the values from the query string
-                cleaned_query = "|".join(sorted([p.split("=")[0] for p in self.parsed_url.query.split("&")]))
+            if self.scan.config.get("url_querystring_remove", True) == False and self.parsed_url.query:
+                # Only consider parameter names in dedup (collapse values)
+                if self.scan.config.get("url_querystring_collapse", True) == True:
+                    cleaned_query = "|".join(sorted([p.split("=")[0] for p in self.parsed_url.query.split("&")]))
+                else:
+                    # Consider parameter names and values in dedup
+                    cleaned_query = "&".join(sorted(self.parsed_url.query.split("&"), key=lambda p: p.split("=")[0]))
                 data = f"{self.parsed_url.scheme}:{self.parsed_url.netloc}:{self.parsed_url.path}:{cleaned_query}"
         return data
+
+    def __str__(self):
+        max_event_len = 160
+        d = str(self.data)
+        return f'{self.type}("{d[:max_event_len]}{("..." if len(d) > max_event_len else "")}", module={self.module}, tags={self.tags})'
 
     @property
     def http_status(self):
@@ -1043,17 +1052,27 @@ class WEB_PARAMETER(DictHostEvent):
         param_type = self.data.get("type", "")
         # this is a hack which needs to be replaced with a real fix in bbot-2.0 branch
         if self.scan is not None:
-            if self.scan.config.get("url_remove_querystring", True) == False:
+            if self.scan.config.get("url_querystring_remove", True) == False:
                 from urllib.parse import urlparse
 
                 parsed_url = urlparse(url)
-                # remove the values from the query string
-                cleaned_query = "|".join(sorted([p.split("=")[0] for p in parsed_url.query.split("&")]))
+
+                if self.scan.config.get("url_querystring_collapse", True) == True:
+                    # Only consider parameter names in dedup (collapse values)
+                    cleaned_query = "|".join(sorted([p.split("=")[0] for p in parsed_url.query.split("&")]))
+                else:
+                    # Consider parameter names and values in dedup
+                    cleaned_query = "&".join(sorted(parsed_url.query.split("&"), key=lambda p: p.split("=")[0]))
                 url = f"{parsed_url.scheme}:{parsed_url.netloc}:{parsed_url.path}:{cleaned_query}"
         return f"{url}:{name}:{param_type}"
 
     def _url(self):
         return self.data["url"]
+
+    def __str__(self):
+        max_event_len = 200
+        d = str(self.data)
+        return f'{self.type}("{d[:max_event_len]}{("..." if len(d) > max_event_len else "")}", module={self.module}, tags={self.tags})'
 
 
 class EMAIL_ADDRESS(BaseEvent):

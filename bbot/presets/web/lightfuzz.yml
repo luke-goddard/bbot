@@ -6,7 +6,7 @@ modules:
   - badsecrets
 
 config:
-  url_remove_querystring: False
+  url_querystring_remove: False
   web_spider_distance: 4
   web_spider_depth: 5
   modules.lightfuzz.submodule_path: False

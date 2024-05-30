@@ -924,6 +924,36 @@ def _validate_param(param, compare_mode):
     return set(param).issubset(allowed_chars)
 
 
+def _exclude_key(original_dict, key_to_exclude):
+    # Create a new dictionary that excludes the specified key
+    return {key: value for key, value in original_dict.items() if key != key_to_exclude}
+
+
+def extract_params_location(location_header_value, original_parsed_url):
+    """
+    Extracts parameters from a location header, yielding them one at a time.
+
+    Args:
+        location_header_value (dict): Contents of location header
+        original_url: The original parsed URL the header was received from (urllib.parse.ParseResult)
+
+    Yields:
+        method(str), parsed_url(urllib.parse.ParseResult), parameter_name(str), original_value(str), regex_name(str), additional_params(dict): The HTTP method associated with the parameter (GET, POST, None), A urllib.parse.ParseResult object representing the endpoint associated with the parameter, the parameter found in the location header, its original value (if available), the name of the detecting regex, a dict of additional params if any
+    """
+
+    if location_header_value.startswith("http://") or location_header_value.startswith("https://"):
+        parsed_url = urlparse(location_header_value)
+    else:
+        parsed_url = urlparse(f"{original_parsed_url.scheme}://{original_parsed_url.netloc}{location_header_value}")
+
+    params = parse_qs(parsed_url.query)
+    flat_params = {k: v[0] for k, v in params.items()}
+
+    for p, p_value in flat_params.items():
+        log.debug(f"FOUND PARAM ({p}) IN LOCATION HEADER")
+        yield "GET", parsed_url, p, p_value, "location_header", _exclude_key(flat_params, p)
+
+
 def extract_params_html(html_data, compare_mode="getparam"):
     """
     Extracts parameters from an HTML object, yielding them one at a time. This function filters
@@ -959,10 +989,6 @@ def extract_params_html(html_data, compare_mode="getparam"):
     found_params = []
 
     input_tag = bbot_regexes.input_tag_regex.findall(html_data)
-
-    def exclude_key(original_dict, key_to_exclude):
-        # Create a new dictionary that excludes the specified key
-        return {key: value for key, value in original_dict.items() if key != key_to_exclude}
 
     # Check "get forms" for input tags
 
@@ -1018,7 +1044,7 @@ def extract_params_html(html_data, compare_mode="getparam"):
             form_params[parameter] = original_value
 
         for parameter, original_value in form_params.items():
-            yield "POST", form_action, parameter, original_value, "post_form", exclude_key(form_params, parameter)
+            yield "POST", form_action, parameter, original_value, "post_form", _exclude_key(form_params, parameter)
 
     # Also Look for input tags everywhere, even if not in a form
     input_tag = bbot_regexes.input_tag_regex.findall(html_data)
